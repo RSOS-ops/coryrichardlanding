@@ -1,1 +1,0 @@
-Cory Richard Landing Page
