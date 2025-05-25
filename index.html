@@ -61,23 +61,21 @@
 <body>
     <div>
       <ul data-time="3000">
-        <li data-hue="197">C</li>
-        <li data-hue="0">O</li>
-        <li data-hue="197">R</li>
-        <li data-hue="197">Y</li>
-        <li data-hue="45">R</li>
-        <li data-hue="197">I</li>
-        <li data-hue="0">C</li>
-        <li data-hue="197">H</li>
-        <li data-hue="197">A</li>
-        <li data-hue="45">R</li>
-        <li data-hue="197">D</li>
-      </ul>
-      <ul data-time="3000">
-        <li data-hue="197">DJ</li>
-        <li data-hue="0">Music</li>
-        <li data-hue="197">Visual</li>
-        <li data-hue="45">Tech</li>
+        <li data-hue="197" data-role="main-name">C</li>
+        <li data-hue="0" data-role="main-name">O</li>
+        <li data-hue="197" data-role="main-name">R</li>
+        <li data-hue="197" data-role="main-name">Y</li>
+        <li data-hue="45" data-role="main-name">R</li>
+        <li data-hue="197" data-role="main-name">I</li>
+        <li data-hue="0" data-role="main-name">C</li>
+        <li data-hue="197" data-role="main-name">H</li>
+        <li data-hue="197" data-role="main-name">A</li>
+        <li data-hue="45" data-role="main-name">R</li>
+        <li data-hue="197" data-role="main-name">D</li>
+        <li data-hue="197" data-role="sections">DJ</li>
+        <li data-hue="0" data-role="sections">Music</li>
+        <li data-hue="197" data-role="sections">Visual</li>
+        <li data-hue="45" data-role="sections">Tech</li>
       </ul>
     </div>
     <canvas></canvas>
@@ -141,7 +139,8 @@ class TextSparks
                             h :li.hasAttribute('data-hue') ? Number(li.getAttribute('data-hue')) : 0,
                             s :li.hasAttribute('data-saturation') ? Number(li.getAttribute('data-saturation')) : 100,
                             l :li.hasAttribute('data-lightness') ? Number(li.getAttribute('data-lightness')) : 50
-                        }
+                        },
+                        role : li.getAttribute('data-role') || '' // Get data-role, default to empty string if not present
                     };
                 })
             };
@@ -160,80 +159,105 @@ class TextSparks
     }
 
     buildTextMask(texts) {
-
         const mask = [];
+        const canvasWidth = 200; // Renamed from width to avoid conflict
+        const canvasHeight = 150; // Adjusted for two lines
 
-        const textAll = texts.reduce((all, textStack) => {
-            return all.concat(textStack.text);
-        }, '');
+        const mainNameTexts = texts.filter(t => t.role === 'main-name');
+        const sectionsTexts = texts.filter(t => t.role === 'sections');
 
-        const size         = 0.8;
-        const width        = 200;
-        const height       = width / (this.width / this.height) | 0;
-        const baseFontSize = 20;
-
-        // const canvas = document.querySelector('#test');
         const canvas = document.createElement('canvas');
         const engine = canvas.getContext('2d');
+        canvas.setAttribute('width', canvasWidth);
+        canvas.setAttribute('height', canvasHeight);
 
-        canvas.setAttribute('width', width);
-        canvas.setAttribute('height', height);
+        const font = (size) => `bold ${size}px Arial`;
+        engine.fillStyle = '#000'; // Color of text to draw (then read as mask)
 
-        const font = (size) => {
-            return `bold ${size}px Arial`;
-        };
+        // --- Render "main-name" Text ---
+        if (mainNameTexts.length > 0) {
+            const mainNameString = mainNameTexts.map(t => t.text).join('');
+            const baseMainFontSize = 40; // Larger base for main name
+            
+            engine.font = font(baseMainFontSize);
+            let mMain = engine.measureText(mainNameString);
+            // Adjust font size to fit width, aiming for 90% of canvas width
+            let fSizeMain = Math.min(baseMainFontSize, (canvasWidth * 0.9 / mMain.width) * baseMainFontSize);
+            
+            engine.font = font(fSizeMain);
+            mMain = engine.measureText(mainNameString); // Re-measure with new font size
+            const fontWidthMain = mMain.width;
+            
+            // Position main name text: Y centered in top half, X centered
+            const yMainName = (canvasHeight / 4) + (fSizeMain / 3); // Adjusted for better centering in top half
+            let currentXMainName = (canvasWidth - fontWidthMain) / 2;
 
-        engine.fillStyle = '#000';
-        engine.font = font(baseFontSize);
-        const m     = engine.measureText(textAll);
-        const rel   = m.width / (width * size);
-        const fSize = Math.min(height * 0.8, baseFontSize / rel | 0);
-
-        engine.font     = font(fSize);
-        const fontWidth = engine.measureText(textAll).width;
-
-        engine.fillText(
-            textAll,
-            (width - fontWidth) / 2,
-            height / 2 + fSize * 0.35
-        );
-
-        let left  = (width - fontWidth) / 2;
-        const bot = height / 2 + fSize * 0.35;
-
-        Object.values(texts).forEach(textStack => {
-
-            engine.clearRect(0, 0, width, height);
-
-            engine.fillText(
-                textStack.text,
-                left,
-                bot
-            );
-
-            left += engine.measureText(textStack.text).width;
-
-            const data     = engine.getImageData(0, 0, width, height);
-            const subStack = [];
-
-            for (let i = 0, max = data.width * data.height; i < max; i++) {
-                if (data.data[i * 4 + 3]) {
-                    subStack.push({
-                        x : (i % data.width) / data.width,
-                        y : (i / data.width | 0) / data.height,
-                        o : Math.random(),
-                        t : Math.random()
-                    });
+            mainNameTexts.forEach(textStack => {
+                engine.clearRect(0, 0, canvasWidth, canvasHeight);
+                engine.font = font(fSizeMain); // Ensure font is set for each part
+                engine.fillText(textStack.text, currentXMainName, yMainName);
+                
+                const textPartWidth = engine.measureText(textStack.text).width;
+                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+                const subStack = [];
+                for (let i = 0; i < data.data.length; i += 4) {
+                    if (data.data[i + 3] > 0) { // Check alpha channel
+                        const pixelIndex = i / 4;
+                        subStack.push({
+                            x: (pixelIndex % canvasWidth) / canvasWidth,
+                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
+                            o: Math.random(),
+                            t: Math.random()
+                        });
+                    }
                 }
-            }
-
-            mask.push({
-                hsl : textStack.hsl,
-                s   : subStack
+                mask.push({ hsl: textStack.hsl, s: subStack });
+                currentXMainName += textPartWidth;
             });
+        }
 
-        });
+        // --- Render "sections" Text ---
+        if (sectionsTexts.length > 0) {
+            const sectionsString = sectionsTexts.map(t => t.text).join('');
+            // fSizeMain might not be defined if mainNameTexts is empty, handle this.
+            // However, problem implies both exist. Assume fSizeMain is available from previous block or set a default.
+            // For safety, let's use a base size related to canvasHeight if fSizeMain wasn't set.
+            const fSizeMainForSections = mainNameTexts.length > 0 ? 
+                                          parseFloat(engine.font.match(/(\d+)px/)[1]) // Get fSizeMain from current engine font
+                                          : 30; // Default if no main name
+            const fSizeSections = fSizeMainForSections * 0.6;
 
+            engine.font = font(fSizeSections);
+            let mSections = engine.measureText(sectionsString);
+            const fontWidthSections = mSections.width;
+
+            // Position sections text: Y centered in bottom half, X centered
+            const ySections = (canvasHeight * 0.75) + (fSizeSections / 3); // Adjusted for better centering in bottom half
+            let currentXSections = (canvasWidth - fontWidthSections) / 2;
+
+            sectionsTexts.forEach(textStack => {
+                engine.clearRect(0, 0, canvasWidth, canvasHeight);
+                engine.font = font(fSizeSections); // Ensure font is set for each part
+                engine.fillText(textStack.text, currentXSections, ySections);
+                
+                const textPartWidth = engine.measureText(textStack.text).width;
+                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+                const subStack = [];
+                for (let i = 0; i < data.data.length; i += 4) {
+                    if (data.data[i + 3] > 0) {
+                        const pixelIndex = i / 4;
+                        subStack.push({
+                            x: (pixelIndex % canvasWidth) / canvasWidth,
+                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
+                            o: Math.random(),
+                            t: Math.random()
+                        });
+                    }
+                }
+                mask.push({ hsl: textStack.hsl, s: subStack });
+                currentXSections += textPartWidth;
+            });
+        }
         return mask;
     }
 
