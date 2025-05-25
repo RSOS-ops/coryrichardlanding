@@ -222,14 +222,26 @@ class TextSparks
             // fSizeMain might not be defined if mainNameTexts is empty, handle this.
             // However, problem implies both exist. Assume fSizeMain is available from previous block or set a default.
             // For safety, let's use a base size related to canvasHeight if fSizeMain wasn't set.
-            const fSizeMainForSections = mainNameTexts.length > 0 ? 
-                                          parseFloat(engine.font.match(/(\d+)px/)[1]) // Get fSizeMain from current engine font
-                                          : 30; // Default if no main name
-            const fSizeSections = fSizeMainForSections * 0.6;
+            let fSizeMainVal = 30; // Default base for sections if mainNameTexts was empty
+            if (mainNameTexts.length > 0 && engine.font.includes("px")) {
+                // Safely get fSizeMain from the engine.font set in the previous block
+                const fontMatch = engine.font.match(/(\d+)px/);
+                if (fontMatch && fontMatch[1]) {
+                    fSizeMainVal = parseFloat(fontMatch[1]);
+                }
+            }
+            
+            const baseSectionsFontSize = fSizeMainVal * 0.6; 
+            engine.font = font(baseSectionsFontSize); // Set with base sections font
+            let mSections = engine.measureText(sectionsString); // Measure
+            
+            // Scale fSizeSections to fit width, similar to fSizeMain
+            let fSizeSections = Math.min(baseSectionsFontSize, (canvasWidth * 0.9 / mSections.width) * baseSectionsFontSize);
+            fSizeSections = Math.max(fSizeSections, 1); // Ensure minimum font size of 1px
 
-            engine.font = font(fSizeSections);
-            let mSections = engine.measureText(sectionsString);
-            const fontWidthSections = mSections.width;
+            engine.font = font(fSizeSections); // Set to final, fitted fSizeSections
+            // Re-measure with final font size for accurate centering
+            const fontWidthSections = engine.measureText(sectionsString).width; 
 
             // Position sections text: Y centered in bottom half, X centered
             const ySections = (canvasHeight * 0.75) + (fSizeSections / 3); // Adjusted for better centering in bottom half
