@@ -231,7 +231,7 @@ class TextSparks
                 }
             }
             
-            const baseSectionsFontSize = fSizeMainVal * 0.6; 
+            const baseSectionsFontSize = fSizeMainVal * 0.5; 
             engine.font = font(baseSectionsFontSize); // Set with base sections font
             let mSections = engine.measureText(sectionsString); // Measure
             
@@ -242,14 +242,16 @@ class TextSparks
             engine.font = font(fSizeSections); // Set to final, fitted fSizeSections
             // Re-measure with final font size for accurate centering
             const fontWidthSections = engine.measureText(sectionsString).width; 
+            const spacerWidth = engine.measureText(' ').width * 3; // Define spacer width
 
-            // Position sections text: Y centered in bottom half, X centered
+            // Position sections text: Y centered in bottom half, X centered (centers the text part only)
             const ySections = (canvasHeight * 0.75) + (fSizeSections / 3); // Adjusted for better centering in bottom half
             let currentXSections = (canvasWidth - fontWidthSections) / 2;
 
-            sectionsTexts.forEach(textStack => {
+            sectionsTexts.forEach((textStack, index) => {
                 engine.clearRect(0, 0, canvasWidth, canvasHeight);
                 engine.font = font(fSizeSections); // Ensure font is set for each part
+                // Fill text for current li at the currentXSections
                 engine.fillText(textStack.text, currentXSections, ySections);
                 
                 const textPartWidth = engine.measureText(textStack.text).width;
@@ -267,7 +269,12 @@ class TextSparks
                     }
                 }
                 mask.push({ hsl: textStack.hsl, s: subStack });
-                currentXSections += textPartWidth;
+                
+                // Advance currentXSections for the NEXT word
+                currentXSections += textPartWidth; // Move past the word just drawn
+                if (index < sectionsTexts.length - 1) { // If not the last word
+                    currentXSections += spacerWidth; // Add space
+                }
             });
         }
         return mask;
