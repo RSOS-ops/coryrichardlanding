@@ -237,8 +237,15 @@ class TextSparks
             let spacerWidth = 0;
             let currentTotalWidthSections = 0;
 
+            // Safeguard for targetWidthForSections before the loop
+            if (targetWidthForSections <= 0) {
+                console.log('Debug: targetWidthForSections is <= 0. Sections will use fallback size or not render effectively.');
+                // The loop's internal checks will likely set a fallback and break.
+            }
+
             // Iteratively adjust fSizeSections to fit targetWidthForSections
             for (let i = 0; i < 3; i++) {
+                // Optional: console.log('Debug Iteration:', i, 'fSizeSections_in:', fSizeSections, 'targetWidth:', targetWidthForSections);
                 engine.font = font(fSizeSections);
                 spacerWidth = engine.measureText(' ').width * 3;
                 currentTotalWidthSections = 0;
@@ -248,18 +255,30 @@ class TextSparks
                         currentTotalWidthSections += spacerWidth;
                     }
                 });
+                // Optional: console.log('Debug Iteration:', i, 'currentTotalWidthSections:', currentTotalWidthSections);
 
-                if (currentTotalWidthSections <= 1) { // Avoid division by zero or tiny widths
+                // Safeguard before division
+                if (currentTotalWidthSections <= 1 || targetWidthForSections <= 0) { 
+                    fSizeSections = 10; // Default small size
+                    console.log('Debug: Hit safeguard (pre-division). currentTotalWidthSections:', currentTotalWidthSections, 'targetWidthForSections:', targetWidthForSections, 'Setting fSizeSections to 10.');
                     break; 
                 }
-                // Adjust font size based on the ratio of target width to current rendered width
+                
                 fSizeSections = fSizeSections * (targetWidthForSections / currentTotalWidthSections);
+                
+                // Safeguard after division
+                if (isNaN(fSizeSections) || !isFinite(fSizeSections)) {
+                    fSizeSections = 10; // Reset to a safe default
+                    console.log('Debug: fSizeSections became NaN or Infinity. Resetting to 10.');
+                    break; 
+                }
                 fSizeSections = Math.max(fSizeSections, 1); // Ensure minimum 1px
+                // Optional: console.log('Debug Iteration:', i, 'fSizeSections_out:', fSizeSections);
             }
-
-            // Final font and spacer settings after iteration
+            
+            // Final font and spacer settings after iteration (or fallback)
             engine.font = font(fSizeSections);
-            spacerWidth = engine.measureText(' ').width * 3; // Recalculate spacerWidth with final font size
+            spacerWidth = engine.measureText(' ').width * 3; 
 
             // For centering, calculate the width of the sectionsString *without* inter-word spacers, 
             // as the spacers are added during the drawing loop.
