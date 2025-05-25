@@ -169,10 +169,143 @@ class TextSparks
         const canvas = document.createElement('canvas');
         const engine = canvas.getContext('2d');
         canvas.setAttribute('width', canvasWidth);
-        canvas.setAttribute('height', canvasHeight);
+        let targetWidthForSections = canvasWidth * 0.9; // Default target width
 
-        const font = (size) => `bold ${size}px Arial`;
-        engine.fillStyle = '#000'; // Color of text to draw (then read as mask)
+        // --- Render "main-name" Text ---
+        if (mainNameTexts.length > 0) {
+            const mainNameString = mainNameTexts.map(t => t.text).join('');
+            const baseMainFontSize = 40; // Larger base for main name
+            
+            engine.font = font(baseMainFontSize);
+            let mMain = engine.measureText(mainNameString);
+            // Adjust font size to fit width, aiming for 90% of canvas width
+            let fSizeMain = Math.min(baseMainFontSize, (canvasWidth * 0.9 / mMain.width) * baseMainFontSize);
+            
+            engine.font = font(fSizeMain);
+            mMain = engine.measureText(mainNameString); // Re-measure with new font size
+            const fontWidthMain = mMain.width;
+            targetWidthForSections = fontWidthMain; // Capture the rendered width of main name
+            
+            // Position main name text: Y centered in top half, X centered
+            const yMainName = (canvasHeight / 4) + (fSizeMain / 3); // Adjusted for better centering in top half
+            let currentXMainName = (canvasWidth - fontWidthMain) / 2;
+
+            mainNameTexts.forEach(textStack => {
+                engine.clearRect(0, 0, canvasWidth, canvasHeight);
+                engine.font = font(fSizeMain); // Ensure font is set for each part
+                engine.fillText(textStack.text, currentXMainName, yMainName);
+                
+                const textPartWidth = engine.measureText(textStack.text).width;
+                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+                const subStack = [];
+                for (let i = 0; i < data.data.length; i += 4) {
+                    if (data.data[i + 3] > 0) { // Check alpha channel
+                        const pixelIndex = i / 4;
+                        subStack.push({
+                            x: (pixelIndex % canvasWidth) / canvasWidth,
+                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
+                            o: Math.random(),
+                            t: Math.random()
+                        });
+                    }
+                }
+                mask.push({ hsl: textStack.hsl, s: subStack });
+                currentXMainName += textPartWidth;
+            });
+        }
+
+        // --- Render "sections" Text ---
+        if (sectionsTexts.length > 0) {
+            const sectionsString = sectionsTexts.map(t => t.text).join('');
+            // fSizeMain might not be defined if mainNameTexts is empty, handle this.
+            // However, problem implies both exist. Assume fSizeMain is available from previous block or set a default.
+            // For safety, let's use a base size related to canvasHeight if fSizeMain wasn't set.
+            let fSizeMainVal = 30; // Default base for sections if mainNameTexts was empty
+            if (mainNameTexts.length > 0 && engine.font.includes("px")) {
+                // Safely get fSizeMain from the engine.font set in the previous block
+                // This relies on engine.font still being fSizeMain from the previous block.
+                // If mainNameTexts.length was 0, engine.font wouldn't be set to fSizeMain.
+                // However, fSizeMainVal is already initialized to 30, so this is okay.
+                const fontMatch = engine.font.match(/(\d+)px/);
+                if (fontMatch && fontMatch[1]) {
+                    fSizeMainVal = parseFloat(fontMatch[1]);
+                }
+            }
+            
+            // Initialize fSizeSections based on fSizeMainVal (from main name text or default)
+            let fSizeSections = fSizeMainVal * 0.5; 
+            let spacerWidth = 0;
+            let currentTotalWidthSections = 0;
+
+            // Iteratively adjust fSizeSections to fit targetWidthForSections
+            for (let i = 0; i < 3; i++) {
+                engine.font = font(fSizeSections);
+                spacerWidth = engine.measureText(' ').width * 3;
+                currentTotalWidthSections = 0;
+                sectionsTexts.forEach((item, idx) => {
+                    currentTotalWidthSections += engine.measureText(item.text).width;
+                    if (idx < sectionsTexts.length - 1) {
+                        currentTotalWidthSections += spacerWidth;
+                    }
+                });
+
+                if (currentTotalWidthSections <= 1) { // Avoid division by zero or tiny widths
+                    break; 
+                }
+                // Adjust font size based on the ratio of target width to current rendered width
+                fSizeSections = fSizeSections * (targetWidthForSections / currentTotalWidthSections);
+                fSizeSections = Math.max(fSizeSections, 1); // Ensure minimum 1px
+            }
+
+            // Final font and spacer settings after iteration
+            engine.font = font(fSizeSections);
+            spacerWidth = engine.measureText(' ').width * 3; // Recalculate spacerWidth with final font size
+
+            // For centering, calculate the width of the sectionsString *without* inter-word spacers, 
+            // as the spacers are added during the drawing loop.
+            // This keeps the text block (sans spacers) centered, and spacers extend it to the right.
+            const sectionsStringWidthForCentering = sectionsTexts.reduce((acc, item) => acc + engine.measureText(item.text).width, 0);
+            
+            // Position sections text: Y centered in bottom half, X centered
+            const ySections = (canvasHeight * 0.75) + (fSizeSections / 3); 
+            // currentXSections centers the block based on targetWidthForSections (width of "main-name" text)
+            let currentXSections = (canvasWidth - targetWidthForSections) / 2;
+
+            sectionsTexts.forEach((textStack, index) => {
+                engine.clearRect(0, 0, canvasWidth, canvasHeight);
+                engine.font = font(fSizeSections); // Ensure font is set for each part
+                // Fill text for current li at the currentXSections
+                engine.fillText(textStack.text, currentXSections, ySections);
+                
+                const textPartWidth = engine.measureText(textStack.text).width;
+                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+                const subStack = [];
+                for (let i = 0; i < data.data.length; i += 4) {
+                    if (data.data[i + 3] > 0) { // Check alpha channel
+                        const pixelIndex = i / 4;
+                        subStack.push({
+                            x: (pixelIndex % canvasWidth) / canvasWidth,
+                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
+                            o: Math.random(),
+                            t: Math.random()
+                        });
+                    }
+                }
+                mask.push({ hsl: textStack.hsl, s: subStack });
+                
+                // Advance currentXSections for the NEXT word
+                currentXSections += textPartWidth; // Move past the word just drawn
+                if (index < sectionsTexts.length - 1) { // If not the last word
+                    currentXSections += spacerWidth; // Add space
+                }
+            });
+        }
+        return mask;
+    }
+
+    createNewParticle() {
+        canvas.setAttribute('height', canvasHeight);
+        let targetWidthForSections = canvasWidth * 0.9; // Default target width
 
         // --- Render "main-name" Text ---
         if (mainNameTexts.length > 0) {
