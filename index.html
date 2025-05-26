@@ -288,6 +288,8 @@
 
           const font = MASK_CANVAS_CONFIG.FONT_STYLE_TEMPLATE;
           engine.fillStyle = MASK_CANVAS_CONFIG.FILL_STYLE;
+          engine.textAlign = 'left';
+          engine.textBaseline = 'alphabetic';
 
           if (mainNameTexts.length > 0) {
             const mainNameString = mainNameTexts.map(t => t.text).join('');
@@ -327,7 +329,7 @@
                   });
                 }
               }
-              mask.push({ hsl: textStack.hsl, s: subStack });
+              mask.push({ hsl: textStack.hsl, s: subStack, role: textStack.role });
               currentXMainName += textPartWidth;
             });
           }
@@ -397,7 +399,7 @@
                   });
                 }
               }
-              mask.push({ hsl: textStack.hsl, s: subStack });
+              mask.push({ hsl: textStack.hsl, s: subStack, role: textStack.role });
               currentXSections += textPartWidth;
             });
           }
@@ -502,8 +504,10 @@
           const baseParticleSize = this.width / STATIC_DRAW_CONFIG.BASE_PARTICLE_SIZE_DIVISOR;
           const arcParticleBaseSize = this.width / STATIC_DRAW_CONFIG.ARC_PARTICLE_SIZE_DIVISOR;
 
+          // Filter out particles with the 'sections' role
+          const maskToRender = this.mask.filter(subMask => subMask.role !== 'sections');
 
-          this.mask.forEach(subMask => {
+          maskToRender.forEach(subMask => {
             subMask.s.forEach(pos => {
               i++;
               // Use pre-calculated pos.xy_factor
