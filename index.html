@@ -408,9 +408,15 @@
           for (let i = 0; i < newParticlesPerFrame; i++) {
             let main = Math.random() * this.mask.length | 0;
             let subMask = this.mask[main];
-            let maskElement = this.mask[main].s[Math.random() * this.mask[main].s.length | 0];
 
-            if (subMask && maskElement) {
+            // Add robustness check for subMask and its particle array 's'
+            if (!subMask || !subMask.s || subMask.s.length === 0) {
+              continue; // Skip this iteration if data is invalid or empty
+            }
+
+            let maskElement = subMask.s[Math.random() * subMask.s.length | 0];
+
+            if (subMask && maskElement) { // maskElement check is now more robust due to the above
               let particle = {
                 x: maskElement.x,
                 y: maskElement.y,
@@ -620,15 +626,40 @@
           }
         }
 
+        /**
+         * Selects the next text mask from the pre-rendered `maskCache`.
+         * It then initiates the display lifecycle for this new mask,
+         * typically starting with a fade-in effect.
+         * Includes robustness checks for missing or invalid mask data.
+         */
         nextMask() {
           this.stackId++;
-          if (this.stackId >= this.stack.length) {
+          if (this.stackId >= this.stack.length) { // Loop back to the first mask if at the end.
             this.stackId = 0;
           }
-          this.mask = this.maskCache[this.stackId];
-          if (this.stack[this.stackId].fadeIn) {
+          this.currentMaskData = this.maskCache[this.stackId]; // Get the full data object
+
+          if (!this.currentMaskData) {
+            console.warn("TextSparks: No valid mask data found for stackId", this.stackId, "Mask cache length:", this.maskCache.length);
+            // Ensure dependent properties are initialized to prevent further errors
+            this.mask = []; // Assuming this.mask is expected to be an array for particles
+            this.currentMaskData = { particleMask: [], staticSections: [] }; // Provide a default structure
+            // Optionally, might want to stop further processing in this.draw if no mask,
+            // but for now, preventing the crash is key.
+          } else {
+            this.mask = this.currentMaskData.particleMask;
+            // Ensure staticSections exists, even if empty, on currentMaskData if it's a valid object
+            if (!this.currentMaskData.staticSections) {
+              this.currentMaskData.staticSections = [];
+            }
+          }
+          
+          // Start the display process for the new mask (usually fade-in).
+          // Check if stack[this.stackId] exists to prevent error if maskCache is misaligned with stack
+          if (this.stack[this.stackId] && this.stack[this.stackId].fadeIn) {
             this.nextMaskCb = this.fadeInMask.bind(this);
           } else {
+            // If no fade-in defined, or stack item missing, make it fully visible and move to the next appropriate state.
             this.opa = 1;
             this.afterFadeIn();
           }
