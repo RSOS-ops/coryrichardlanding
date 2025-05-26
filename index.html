@@ -86,13 +86,13 @@
       const newParticlesPerFrame = 50;
 
       // Configuration constants
-      // Speed adjustments (factor of 3 slower) are now baked directly into these values.
+      // Speed adjustments (total factor of 6x slower: 3 * 2) are now baked directly into these values.
       // Original values are commented for reference.
       const PARTICLE_CONFIG = {
         // TICKS_MULTIPLIER: 0.05, // Original
-        TICKS_MULTIPLIER: 0.15, // Adjusted: 0.05 * 3
+        TICKS_MULTIPLIER: 0.3, // Adjusted: 0.05 * 3 * 2
         // FADE_SPEED_DIVISOR: 50, // Original (used as numerator for fade speed)
-        FADE_SPEED_DIVISOR: 16.666666666666668, // Adjusted: 50 / 3
+        FADE_SPEED_DIVISOR: 8.333333333333334, // Adjusted: 50 / 3 / 2
         DEFAULT_HUE: 0,
         DEFAULT_SATURATION: 100,
         DEFAULT_LIGHTNESS: 50
@@ -124,9 +124,9 @@
       const PARTICLE_PHYSICS = {
         POSITION_ADJUST_DIVISOR: 300,
         // BASE_LIFESPAN_INCREMENT: 0.003, // Original
-        BASE_LIFESPAN_INCREMENT: 0.001, // Adjusted: 0.003 / 3
+        BASE_LIFESPAN_INCREMENT: 0.0005, // Adjusted: 0.003 / 3 / 2
         // RANDOM_LIFESPAN_DIVISOR: 10, // Original
-        RANDOM_LIFESPAN_DIVISOR: 30, // Adjusted: 10 * 3
+        RANDOM_LIFESPAN_DIVISOR: 60, // Adjusted: 10 * 3 * 2
         MAX_SIZE_RANDOM_FACTOR: 4,
         SLOW_SPEED_DIVISOR: 400,
         FAST_SPEED_DIVISOR: 10,
@@ -136,10 +136,10 @@
 
       const STATIC_DRAW_CONFIG = {
         // TICK_EFFECT_DIVISOR: 10, // Original
-        TICK_EFFECT_DIVISOR: 30, // Adjusted: 10 * 3
+        TICK_EFFECT_DIVISOR: 60, // Adjusted: 10 * 3 * 2
         PRIMARY_OPACITY_T_FACTOR: 0.5,
         // SECONDARY_EFFECT_STEP: 0.01, // Original
-        SECONDARY_EFFECT_STEP: 0.0033333333333333335, // Adjusted: 0.01 / 3
+        SECONDARY_EFFECT_STEP: 0.0016666666666666668, // Adjusted: 0.01 / 3 / 2
         SECONDARY_PADDING_DIVISOR_WIDTH_RATIO: 200,
         SECONDARY_OPACITY_FACTOR: 0.2,
         ALTERNATE_RENDERING_MODULO: 2,
