@@ -1,64 +1,58 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
-<head>
+  <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cory Richard</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
     <style>
-        html {
-            margin:0;
-            padding:0;
-            /* font-size:0; Removed due to conflict with existing em-based font sizes */
-        }
-        body {
-            background-color: black;
-            color: white; /* Assuming you want white text for contrast */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0; /* Existing, compatible with CodePen */
-            padding:0; /* Added from CodePen */
-            /* font-size:0; Removed due to conflict with existing em-based font sizes */
-            font-family: 'Roboto', sans-serif; /* Added a default font */
-        }
-        /* div { display:none; } Removed as it hides essential content including the animation div */
-        canvas {
-            width:100vw;
-            height:100vh;
-        }
-        h1 {
-            font-size: 4em; /* "Very large" text */
-            margin-bottom: 20px; /* Space between text and image */
-            text-align: center;
-        }
-        img {
-            display: block; /* To allow margin auto to work for centering */
-            margin-left: auto;
-            margin-right: auto;
-            max-width: 40%; /* Ensure image is responsive */
-            height: auto; /* Maintain aspect ratio */
-    border: 3px solid black; /* Changed border color to black */
-        }
-        #sections-container {
-            display: flex;
-            justify-content: space-around;
-            width: 66%; /* Optional: makes the container take full width */
-            margin-top: 20px; /* Add some space above the sections */
-        }
-        .section {
-            padding: 10px;
-            font-size: 2em; /* Make section text larger */
-        }
-        /* Hide the list used for text animation initially */
-        div > ul[data-time] {
-            display: none;
-        }
+      html, body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background-color: black;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        font-family: 'Roboto', sans-serif;
+      }
+      canvas {
+        width: 100vw;
+        height: 100vh;
+      }
+      h1 {
+        font-size: 4em;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      img {
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+        max-width: 40%;
+        height: auto;
+        border: 3px solid black;
+      }
+      #sections-container {
+        display: flex;
+        justify-content: space-around;
+        width: 66%;
+        margin-top: 20px;
+      }
+      .section {
+        padding: 10px;
+        font-size: 2em;
+      }
+      div > ul[data-time] {
+        display: none; /* This hides the list used for text animation initially */
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div>
       <ul data-time="3000">
         <li data-hue="197" data-role="main-name">C</li>
@@ -81,443 +75,362 @@
     <canvas></canvas>
     <h1>Coming Soon</h1>
     <div id="sections-container" style="display: none;">
-        <div class="section">DJ</div>
-        <div class="section">Music</div>
-        <div class="section">Visual</div>
-        <div class="section">Tech</div>
+      <div class="section">DJ</div>
+      <div class="section">Music</div>
+      <div class="section">Visual</div>
+      <div class="section">Tech</div>
     </div>
     <script>
-const newParticlesPerFrame = 50;
+      const newParticlesPerFrame = 50;
 
-const color = (hsl, o) => {
-    return `hsla(${hsl.h | 0}, ${hsl.s}%, ${hsl.l}%, ${o})`;
-};
+      const color = (hsl, o) => {
+        return `hsla(${hsl.h | 0}, ${hsl.s}%, ${hsl.l}%, ${o})`;
+      };
 
-class TextSparks
-{
-    constructor() {
+      class TextSparks {
+        constructor() {
+          this.opa = 0;
+          this.tick = 0;
+          this.drawCB = null;
+          this.mask = null;
+          this.canvas = window.document.querySelector('canvas');
+          this.engine = this.canvas.getContext('2d');
+          this.maskTick = 0;
+          this.nextMaskCb = this.nextMask.bind(this);
+          this.maskCache = [];
 
-        this.opa    = 0;
-        this.tick   = 0;
-        this.drawCB = null;
-        this.mask   = null;
-        this.canvas = window.document.querySelector('canvas');
-        this.engine = this.canvas.getContext('2d');
+          this.resize();
+          this.fetchData();
+          this.buildStackCache();
+          this.particleMap = new Map();
+        }
 
-        this.maskTick   = 0;
-        this.nextMaskCb = this.nextMask.bind(this);
-        this.maskCache  = [];
-
-        this.resize();
-        this.fetchData();
-        this.buildStackCache();
-
-        this.particleMap = new Map();
-
-    }
-
-    buildStackCache() {
-
-        this.maskCache = this.stack.map((stack) => {
+        buildStackCache() {
+          this.maskCache = this.stack.map((stack) => {
             return this.buildTextMask(stack.texts);
-        });
+          });
+        }
 
-    }
-
-    fetchData() {
-
-        this.stackId = -1;
-        this.stack   = [...document.querySelectorAll('div > ul')].map(ul => {
+        fetchData() {
+          this.stackId = -1;
+          this.stack = [...document.querySelectorAll('div > ul')].map(ul => {
             return {
-                ticks   : 0.05 * (ul.hasAttribute('data-time') ? ul.getAttribute('data-time') : 0),
-                fadeIn  : ul.hasAttribute('data-fade-in') ? 50 / Number(ul.getAttribute('data-fade-in')) : 0,
-                fadeOut : ul.hasAttribute('data-fade-out') ? 50 / Number(ul.getAttribute('data-fade-out')) : 0,
-                texts : [...ul.querySelectorAll('li')].map(li => {
-                    return {
-                        text : li.innerHTML.trim(),
-                        hsl : {
-                            h :li.hasAttribute('data-hue') ? Number(li.getAttribute('data-hue')) : 0,
-                            s :li.hasAttribute('data-saturation') ? Number(li.getAttribute('data-saturation')) : 100,
-                            l :li.hasAttribute('data-lightness') ? Number(li.getAttribute('data-lightness')) : 50
-                        },
-                        role : li.getAttribute('data-role') || '' // Get data-role, default to empty string if not present
-                    };
-                })
+              ticks: 0.05 * (ul.hasAttribute('data-time') ? ul.getAttribute('data-time') : 0),
+              fadeIn: ul.hasAttribute('data-fade-in') ? 50 / Number(ul.getAttribute('data-fade-in')) : 0,
+              fadeOut: ul.hasAttribute('data-fade-out') ? 50 / Number(ul.getAttribute('data-fade-out')) : 0,
+              texts: [...ul.querySelectorAll('li')].map(li => {
+                return {
+                  text: li.innerHTML.trim(),
+                  hsl: {
+                    h: li.hasAttribute('data-hue') ? Number(li.getAttribute('data-hue')) : 0,
+                    s: li.hasAttribute('data-saturation') ? Number(li.getAttribute('data-saturation')) : 100,
+                    l: li.hasAttribute('data-lightness') ? Number(li.getAttribute('data-lightness')) : 50
+                  },
+                  role: li.getAttribute('data-role') || ''
+                };
+              })
             };
-        });
+          });
+        }
 
-    }
+        resize() {
+          this.width = window.innerWidth;
+          this.height = window.innerHeight;
+          this.canvas.setAttribute('width', this.width);
+          this.canvas.setAttribute('height', this.height);
+        }
 
-    resize() {
+        buildTextMask(texts) {
+          const mask = [];
+          const canvasWidth = 200;
+          const canvasHeight = 150;
 
-        this.width  = window.innerWidth;
-        this.height = window.innerHeight;
+          const mainNameTexts = texts.filter(t => t.role === 'main-name');
+          const sectionsTexts = texts.filter(t => t.role === 'sections');
 
-        this.canvas.setAttribute('width', this.width);
-        this.canvas.setAttribute('height', this.height);
+          const canvas = document.createElement('canvas');
+          const engine = canvas.getContext('2d');
+          canvas.setAttribute('width', canvasWidth);
+          canvas.setAttribute('height', canvasHeight);
 
-    }
+          const font = (size) => `bold ${size}px Arial`;
+          engine.fillStyle = '#000';
 
-    buildTextMask(texts) {
-        const mask = [];
-        const canvasWidth = 200; // Renamed from width to avoid conflict
-        const canvasHeight = 150; // Adjusted for two lines
-
-        const mainNameTexts = texts.filter(t => t.role === 'main-name');
-        const sectionsTexts = texts.filter(t => t.role === 'sections');
-
-        const canvas = document.createElement('canvas');
-        const engine = canvas.getContext('2d');
-        canvas.setAttribute('width', canvasWidth);
-        canvas.setAttribute('height', canvasHeight);
-
-        const font = (size) => `bold ${size}px Arial`;
-        engine.fillStyle = '#000'; // Color of text to draw (then read as mask)
-
-        // --- Render "main-name" Text ---
-        if (mainNameTexts.length > 0) {
+          if (mainNameTexts.length > 0) {
             const mainNameString = mainNameTexts.map(t => t.text).join('');
-            const baseMainFontSize = 40; // Larger base for main name
-            
+            const baseMainFontSize = 40;
             engine.font = font(baseMainFontSize);
             let mMain = engine.measureText(mainNameString);
-            // Adjust font size to fit width, aiming for 90% of canvas width
             let fSizeMain = Math.min(baseMainFontSize, (canvasWidth * 0.9 / mMain.width) * baseMainFontSize);
-            
             engine.font = font(fSizeMain);
-            mMain = engine.measureText(mainNameString); // Re-measure with new font size
+            mMain = engine.measureText(mainNameString);
             const fontWidthMain = mMain.width;
-            
-            // Position main name text: Y centered in top half, X centered
-            const yMainName = (canvasHeight / 4) + (fSizeMain / 3); // Adjusted for better centering in top half
+            const yMainName = (canvasHeight / 4) + (fSizeMain / 3);
             let currentXMainName = (canvasWidth - fontWidthMain) / 2;
 
             mainNameTexts.forEach(textStack => {
-                engine.clearRect(0, 0, canvasWidth, canvasHeight);
-                engine.font = font(fSizeMain); // Ensure font is set for each part
-                engine.fillText(textStack.text, currentXMainName, yMainName);
-                
-                const textPartWidth = engine.measureText(textStack.text).width;
-                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
-                const subStack = [];
-                for (let i = 0; i < data.data.length; i += 4) {
-                    if (data.data[i + 3] > 0) { // Check alpha channel
-                        const pixelIndex = i / 4;
-                        subStack.push({
-                            x: (pixelIndex % canvasWidth) / canvasWidth,
-                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
-                            o: Math.random(),
-                            t: Math.random()
-                        });
-                    }
+              engine.clearRect(0, 0, canvasWidth, canvasHeight);
+              engine.font = font(fSizeMain);
+              engine.fillText(textStack.text, currentXMainName, yMainName);
+              const textPartWidth = engine.measureText(textStack.text).width;
+              const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+              const subStack = [];
+              for (let i = 0; i < data.data.length; i += 4) {
+                if (data.data[i + 3] > 0) {
+                  const pixelIndex = i / 4;
+                  subStack.push({
+                    x: (pixelIndex % canvasWidth) / canvasWidth,
+                    y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
+                    o: Math.random(),
+                    t: Math.random()
+                  });
                 }
-                mask.push({ hsl: textStack.hsl, s: subStack });
-                currentXMainName += textPartWidth;
+              }
+              mask.push({ hsl: textStack.hsl, s: subStack });
+              currentXMainName += textPartWidth;
             });
-        }
+          }
 
-        // --- Render "sections" Text ---
-        if (sectionsTexts.length > 0) {
+          if (sectionsTexts.length > 0) {
             const sectionsString = sectionsTexts.map(t => t.text).join('');
-            // fSizeMain might not be defined if mainNameTexts is empty, handle this.
-            // However, problem implies both exist. Assume fSizeMain is available from previous block or set a default.
-            // For safety, let's use a base size related to canvasHeight if fSizeMain wasn't set.
-            let fSizeMainVal = 30; // Default base for sections if mainNameTexts was empty
+            let fSizeMainVal = 30;
             if (mainNameTexts.length > 0 && engine.font.includes("px")) {
-                // Safely get fSizeMain from the engine.font set in the previous block
-                const fontMatch = engine.font.match(/(\d+)px/);
-                if (fontMatch && fontMatch[1]) {
-                    fSizeMainVal = parseFloat(fontMatch[1]);
-                }
+              const fontMatch = engine.font.match(/(\d+)px/);
+              if (fontMatch && fontMatch[1]) {
+                fSizeMainVal = parseFloat(fontMatch[1]);
+              }
             }
-            
-            const baseSectionsFontSize = fSizeMainVal * 0.6; 
-            engine.font = font(baseSectionsFontSize); // Set with base sections font
-            let mSections = engine.measureText(sectionsString); // Measure
-            
-            // Scale fSizeSections to fit width, similar to fSizeMain
+            const baseSectionsFontSize = fSizeMainVal * 0.6;
+            engine.font = font(baseSectionsFontSize);
+            let mSections = engine.measureText(sectionsString);
             let fSizeSections = Math.min(baseSectionsFontSize, (canvasWidth * 0.9 / mSections.width) * baseSectionsFontSize);
-            fSizeSections = Math.max(fSizeSections, 1); // Ensure minimum font size of 1px
-
-            engine.font = font(fSizeSections); // Set to final, fitted fSizeSections
-            // Re-measure with final font size for accurate centering
-            const fontWidthSections = engine.measureText(sectionsString).width; 
-
-            // Position sections text: Y centered in bottom half, X centered
-            const ySections = (canvasHeight * 0.75) + (fSizeSections / 3); // Adjusted for better centering in bottom half
+            fSizeSections = Math.max(fSizeSections, 1);
+            engine.font = font(fSizeSections);
+            const fontWidthSections = engine.measureText(sectionsString).width;
+            const ySections = (canvasHeight * 0.75) + (fSizeSections / 3);
             let currentXSections = (canvasWidth - fontWidthSections) / 2;
 
             sectionsTexts.forEach(textStack => {
-                engine.clearRect(0, 0, canvasWidth, canvasHeight);
-                engine.font = font(fSizeSections); // Ensure font is set for each part
-                engine.fillText(textStack.text, currentXSections, ySections);
-                
-                const textPartWidth = engine.measureText(textStack.text).width;
-                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
-                const subStack = [];
-                for (let i = 0; i < data.data.length; i += 4) {
-                    if (data.data[i + 3] > 0) {
-                        const pixelIndex = i / 4;
-                        subStack.push({
-                            x: (pixelIndex % canvasWidth) / canvasWidth,
-                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
-                            o: Math.random(),
-                            t: Math.random()
-                        });
-                    }
+              engine.clearRect(0, 0, canvasWidth, canvasHeight);
+              engine.font = font(fSizeSections);
+              engine.fillText(textStack.text, currentXSections, ySections);
+              const textPartWidth = engine.measureText(textStack.text).width;
+              const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+              const subStack = [];
+              for (let i = 0; i < data.data.length; i += 4) {
+                if (data.data[i + 3] > 0) {
+                  const pixelIndex = i / 4;
+                  subStack.push({
+                    x: (pixelIndex % canvasWidth) / canvasWidth,
+                    y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
+                    o: Math.random(),
+                    t: Math.random()
+                  });
                 }
-                mask.push({ hsl: textStack.hsl, s: subStack });
-                currentXSections += textPartWidth;
+              }
+              mask.push({ hsl: textStack.hsl, s: subStack });
+              currentXSections += textPartWidth;
             });
+          }
+          return mask;
         }
-        return mask;
-    }
 
-    createNewParticle() {
-
-        for (let i = 0; i < newParticlesPerFrame; i++) {
-
-            let main        = Math.random() * this.mask.length | 0;
-            let subMask     = this.mask[main];
+        createNewParticle() {
+          for (let i = 0; i < newParticlesPerFrame; i++) {
+            let main = Math.random() * this.mask.length | 0;
+            let subMask = this.mask[main];
             let maskElement = this.mask[main].s[Math.random() * this.mask[main].s.length | 0];
 
             if (subMask && maskElement) {
-                let particle = {
-                    x   : maskElement.x,
-                    y   : maskElement.y,
-                    hsl : subMask.hsl,
-                    c   : this.prepareParticle
-                };
-
-                this.particleMap.set(particle, particle);
+              let particle = {
+                x: maskElement.x,
+                y: maskElement.y,
+                hsl: subMask.hsl,
+                c: this.prepareParticle
+              };
+              this.particleMap.set(particle, particle);
             }
-
+          }
         }
-    }
 
-    secLog(log, timesPerFrame) {
-        if(Math.random() < 1 / 60 / timesPerFrame) {
+        secLog(log, timesPerFrame) {
+          if (Math.random() < 1 / 60 / timesPerFrame) {
             console.log(log);
+          }
         }
-    }
 
-    clear() {
-        this.engine.fillStyle = '#111';
-        this.engine.fillRect(0, 0, this.width, this.height);
-    }
+        clear() {
+          this.engine.fillStyle = '#111';
+          this.engine.fillRect(0, 0, this.width, this.height);
+        }
 
-    randFromList(...rands) {
-        return rands.reduce((acc, rand) => {
+        randFromList(...rands) {
+          return rands.reduce((acc, rand) => {
             return acc + rand;
-        }, 0) / rands.length;
-    }
+          }, 0) / rands.length;
+        }
 
-    prepareParticle(particle) {
+        prepareParticle(particle) {
+          const r1 = Math.random();
+          const r2 = Math.random();
+          const r3 = Math.random();
+          const rad = r3 * Math.PI * 2;
 
-        const r1 = Math.random();
-        const r2 = Math.random();
-        const r3 = Math.random();
+          particle.x += (-0.5 + r1) / 300;
+          particle.y += (-0.5 + r2) / 300;
+          particle.si = 1 + Math.random() * 4 | 0;
+          particle.s = 0.003 + this.randFromList(r1, r2) / 10;
+          particle.l = 0;
+          particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
+          particle.my = Math.sin(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
+          particle.c = this.drawParticle;
+        }
 
-        const rad = r3 * Math.PI * 2;
-
-        particle.x += (-0.5 + r1) / 300;
-        particle.y += (-0.5 + r2) / 300;
-        particle.si = 1 + Math.random() * 4 | 0;
-        // particle.cc = this.randFromList(r2, r3);
-        // particle.cc = this.hue / 365;
-
-        particle.s = 0.003 + this.randFromList(r1, r2) / 10;
-        particle.l = 0;
-
-        particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
-        particle.my = Math.sin(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
-
-        particle.c = this.drawParticle;
-    }
-
-    drawParticle(particle) {
-
-        if (particle.l >= 1) {
+        drawParticle(particle) {
+          if (particle.l >= 1) {
             particle.c = null;
             return;
+          }
+
+          particle.l += particle.s;
+          particle.x += particle.mx;
+          particle.y += particle.my;
+
+          this.engine.fillStyle = color(particle.hsl, this.opa * Math.sin(particle.l * Math.PI));
+          this.engine.fillRect(particle.x * this.width, particle.y * this.height, particle.si, particle.si);
         }
 
-        particle.l += particle.s;
-        particle.x += particle.mx;
-        particle.y += particle.my;
-
-        this.engine.fillStyle = color(particle.hsl, this.opa * Math.sin(particle.l * Math.PI));
-        this.engine.fillRect(particle.x * this.width, particle.y * this.height, particle.si, particle.si);
-
-    }
-
-    renderParticles() {
-
-        this.particleMap.forEach((particle) => {
-
+        renderParticles() {
+          this.particleMap.forEach((particle) => {
             particle.c.call(this, particle);
-
             if (!particle.c) {
-                this.particleMap.delete(particle);
+              this.particleMap.delete(particle);
             }
+          });
+        }
 
-        });
+        drawStatic() {
+          let i = 0;
+          const step = 0.01;
 
-    }
-
-    drawStatic() {
-
-        let i = 0;
-        const step = 0.01;
-
-        this.mask.forEach(subMask => {
+          this.mask.forEach(subMask => {
             subMask.s.forEach(pos => {
+              i++;
+              this.engine.fillStyle = color(subMask.hsl, (1 + Math.cos(pos.x * 5 * pos.y * 5 + this.tick / 10)) / 2 * this.opa * pos.t * 0.5);
+              this.engine.fillRect(
+                pos.x * this.width,
+                pos.y * this.height,
+                this.width / 150,
+                this.width / 150
+              );
 
-                i++;
+              if (i % 2) {
+                return;
+              }
 
-                this.engine.fillStyle = color(subMask.hsl, (1 + Math.cos(pos.x * 5 * pos.y * 5 + this.tick / 10)) / 2 * this.opa * pos.t * 0.5);
-                this.engine.fillRect(
-                    pos.x * this.width,
-                    pos.y * this.height,
-                    this.width / 150,
-                    this.width / 150
+              pos.o += step;
+              const opa = Math.max(0, Math.sin(pos.o * Math.PI * 2));
+              const padding = opa * this.width / 200;
+
+              this.engine.fillStyle = color(subMask.hsl, this.opa * opa * 0.2);
+
+              if (pos.t < 0.5) {
+                this.engine.beginPath();
+                this.engine.arc(
+                  pos.x * this.width,
+                  pos.y * this.height,
+                  this.width / 500 + padding,
+                  0,
+                  Math.PI * 2
                 );
-
-                if (i % 2) {
-                    return;
-                }
-
-                pos.o        += step;
-                const opa     = Math.max(0, Math.sin(pos.o * Math.PI * 2));
-                const padding = opa * this.width / 200;
-
-                this.engine.fillStyle = color(subMask.hsl, this.opa * opa * 0.2);
-
-                if (pos.t < 0.5) {
-                    this.engine.beginPath();
-                    this.engine.arc(
-                        pos.x * this.width,
-                        pos.y * this.height,
-                        this.width / 500  + padding,
-                        0,
-                        Math.PI * 2
-                    );
-                    this.engine.fill();
-                } else {
-                    this.engine.fillRect(
-                        pos.x * this.width - padding,
-                        pos.y * this.height - padding,
-                        this.width / 150  + padding * 2,
-                        this.width / 150  + padding * 2
-                    );
-                }
-
+                this.engine.fill();
+              } else {
+                this.engine.fillRect(
+                  pos.x * this.width - padding,
+                  pos.y * this.height - padding,
+                  this.width / 150 + padding * 2,
+                  this.width / 150 + padding * 2
+                );
+              }
             });
-        });
-
-
-
-    }
-
-    draw() {
-
-        this.tick++;
-
-        this.nextMaskCb();
-        this.createNewParticle();
-        this.clear();
-
-        this.engine.globalCompositeOperation = 'lighter';
-        this.drawStatic();
-        this.renderParticles();
-        this.engine.globalCompositeOperation = 'source-over';
-
-        requestAnimationFrame(this.drawCB);
-
-    }
-
-    fadeInMask() {
-        this.opa += this.stack[this.stackId].fadeIn;
-
-        if (this.opa >= 1) {
-            this.opa = 1;
-
-            this.afterFadeIn();
+          });
         }
-    }
 
-    afterFadeIn() {
+        draw() {
+          this.tick++;
+          this.nextMaskCb();
+          this.createNewParticle();
+          this.clear();
+          this.engine.globalCompositeOperation = 'lighter';
+          this.drawStatic();
+          this.renderParticles();
+          this.engine.globalCompositeOperation = 'source-over';
+          requestAnimationFrame(this.drawCB);
+        }
 
-        this.opa = 1;
+        fadeInMask() {
+          this.opa += this.stack[this.stackId].fadeIn;
+          if (this.opa >= 1) {
+            this.opa = 1;
+            this.afterFadeIn();
+          }
+        }
 
-        if (this.stack[this.stackId].ticks) {
-            this.maskTick   = 0;
+        afterFadeIn() {
+          this.opa = 1;
+          if (this.stack[this.stackId].ticks) {
+            this.maskTick = 0;
             this.nextMaskCb = this.tickMask.bind(this);
-        } else {
+          } else {
             this.nextMaskCb = () => {};
+          }
         }
 
-    }
-
-    fadeOutMask() {
-
-        this.opa -= this.stack[this.stackId].fadeOut;
-
-        if (this.opa <= 0) {
+        fadeOutMask() {
+          this.opa -= this.stack[this.stackId].fadeOut;
+          if (this.opa <= 0) {
             this.afterFadeOut();
+          }
         }
 
-    }
+        afterFadeOut() {
+          this.opa = 0;
+          this.nextMaskCb = this.nextMask.bind(this);
+        }
 
-    afterFadeOut() {
-
-        this.opa = 0;
-        this.nextMaskCb = this.nextMask.bind(this);
-
-    }
-
-    tickMask() {
-
-        this.maskTick++;
-
-        if (this.maskTick >= this.stack[this.stackId].ticks) {
+        tickMask() {
+          this.maskTick++;
+          if (this.maskTick >= this.stack[this.stackId].ticks) {
             if (this.stack[this.stackId].fadeOut) {
-                this.nextMaskCb = this.fadeOutMask.bind(this);
+              this.nextMaskCb = this.fadeOutMask.bind(this);
             } else {
-                this.afterFadeOut();
+              this.afterFadeOut();
             }
+          }
         }
 
-    }
-
-    nextMask() {
-
-        this.stackId++;
-
-        if (this.stackId >= this.stack.length) {
+        nextMask() {
+          this.stackId++;
+          if (this.stackId >= this.stack.length) {
             this.stackId = 0;
-        }
-
-        this.mask = this.maskCache[this.stackId];
-
-        if (this.stack[this.stackId].fadeIn) {
+          }
+          this.mask = this.maskCache[this.stackId];
+          if (this.stack[this.stackId].fadeIn) {
             this.nextMaskCb = this.fadeInMask.bind(this);
-        } else {
+          } else {
             this.opa = 1;
             this.afterFadeIn();
+          }
         }
-    }
 
-    run() {
+        run() {
+          this.drawCB = this.draw.bind(this);
+          this.drawCB();
+        }
+      }
 
-        this.drawCB = this.draw.bind(this);
-        this.drawCB();
-
-    }
-}
-
-const a = new TextSparks();
-a.run();
+      const a = new TextSparks();
+      a.run();
     </script>
-</body>
+  </body>
 </html>
