@@ -25,9 +25,22 @@
             font-family: 'Roboto', sans-serif; /* Added a default font */
         }
         /* div { display:none; } Removed as it hides essential content including the animation div */
-        canvas {
+        /* canvas {
             width:100vw;
             height:100vh;
+        } */
+        #staticTextCanvas, #animationCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+        #staticTextCanvas {
+            z-index: 0;
+        }
+        #animationCanvas {
+            z-index: 1;
         }
         h1 {
             font-size: 4em; /* "Very large" text */
@@ -78,7 +91,8 @@
         <li data-hue="45" data-role="sections">Tech</li>
       </ul>
     </div>
-    <canvas></canvas>
+    <canvas id="staticTextCanvas"></canvas>
+    <canvas id="animationCanvas"></canvas>
     <h1>Coming Soon</h1>
     <div id="sections-container" style="display: none;">
         <div class="section">DJ</div>
@@ -101,8 +115,17 @@ class TextSparks
         this.tick   = 0;
         this.drawCB = null;
         this.mask   = null;
-        this.canvas = window.document.querySelector('canvas');
+        // Select the animation canvas specifically
+        this.canvas = window.document.querySelector('#animationCanvas'); 
         this.engine = this.canvas.getContext('2d');
+        
+        // Get static canvas and context
+        this.staticCanvas = window.document.querySelector('#staticTextCanvas');
+        if (this.staticCanvas) { // Check if element exists
+            this.staticEngine = this.staticCanvas.getContext('2d');
+        } else {
+            console.error("#staticTextCanvas not found!");
+        }
 
         this.maskTick   = 0;
         this.nextMaskCb = this.nextMask.bind(this);
@@ -156,6 +179,17 @@ class TextSparks
         this.canvas.setAttribute('width', this.width);
         this.canvas.setAttribute('height', this.height);
 
+        if (this.staticCanvas) { // Check if element exists
+            this.staticCanvas.setAttribute('width', this.width);
+            this.staticCanvas.setAttribute('height', this.height);
+        }
+        
+        if (this.staticEngine) {
+            // Optional: set a fill style if you want a specific background,
+            // otherwise it will be transparent. For now, let's assume default clear.
+            this.staticEngine.clearRect(0, 0, this.width, this.height);
+        }
+
     }
 
     buildTextMask(texts) {
@@ -194,6 +228,15 @@ class TextSparks
                 engine.clearRect(0, 0, canvasWidth, canvasHeight);
                 engine.font = font(fSizeMain); 
                 engine.fillText(textStack.text, currentXMainName, yMainName);
+
+                if (this.staticEngine) {
+                    const staticFSizeMain = fSizeMain * (this.width / canvasWidth);
+                    this.staticEngine.font = font(staticFSizeMain);
+                    this.staticEngine.fillStyle = color(textStack.hsl, 1);
+                    const staticXMain = (currentXMainName / canvasWidth) * this.width;
+                    const staticYMain = (yMainName / canvasHeight) * this.height;
+                    this.staticEngine.fillText(textStack.text, staticXMain, staticYMain);
+                }
                 
                 const textPartWidth = engine.measureText(textStack.text).width;
                 const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
@@ -290,6 +333,15 @@ class TextSparks
             sectionsTexts.forEach((item, index) => { 
                 engine.clearRect(0, 0, canvasWidth, canvasHeight);
                 engine.fillText(item.text, currentXSections, ySections); 
+
+                if (this.staticEngine) {
+                    const staticFSizeSections = fSizeSections * (this.width / canvasWidth);
+                    this.staticEngine.font = font(staticFSizeSections);
+                    this.staticEngine.fillStyle = color(item.hsl, 1);
+                    const staticXSections = (currentXSections / canvasWidth) * this.width;
+                    const staticYSections = (ySections / canvasHeight) * this.height;
+                    this.staticEngine.fillText(item.text, staticXSections, staticYSections);
+                }
                 
                 const textPartWidth = engine.measureText(item.text).width;
                 const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
