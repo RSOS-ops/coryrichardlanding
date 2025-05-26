@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -101,31 +101,35 @@
         <div class="section">Tech</div>
     </div>
     <script>
-const newParticlesPerFrame = 50;
+const newParticlesPerFrame = 50; // This is not used if createNewParticle's content is correct
 
 const color = (hsl, o) => {
-    return `hsla(${hsl.h | 0}, ${hsl.s}%, ${hsl.l}%, ${o})`;
+    return \`hsla(\${hsl.h | 0}, \${hsl.s}%, \${hsl.l}%, \${o})\`;
 };
+
+// Helper function for font string, assuming it's defined globally or part of TextSparks if used internally consistently
+const font = (size) => \`bold \${size}px Arial\`;
 
 class TextSparks
 {
     constructor() {
+        console.log("TextSparks constructor: Started.");
 
         this.opa    = 0;
         this.tick   = 0;
         this.drawCB = null;
         this.mask   = null;
-        // Select the animation canvas specifically
         this.canvas = window.document.querySelector('#animationCanvas'); 
         this.engine = this.canvas.getContext('2d');
         
-        // Get static canvas and context
         this.staticCanvas = window.document.querySelector('#staticTextCanvas');
-        if (this.staticCanvas) { // Check if element exists
+        if (this.staticCanvas) {
             this.staticEngine = this.staticCanvas.getContext('2d');
         } else {
             console.error("#staticTextCanvas not found!");
         }
+        console.log("TextSparks constructor: animationCanvas:", this.canvas, "staticCanvas:", this.staticCanvas);
+        console.log("TextSparks constructor: animationEngine:", this.engine, "staticEngine:", this.staticEngine);
 
         this.maskTick   = 0;
         this.nextMaskCb = this.nextMask.bind(this);
@@ -136,19 +140,15 @@ class TextSparks
         this.buildStackCache();
 
         this.particleMap = new Map();
-
     }
 
     buildStackCache() {
-
         this.maskCache = this.stack.map((stack) => {
             return this.buildTextMask(stack.texts);
         });
-
     }
 
     fetchData() {
-
         this.stackId = -1;
         this.stack   = [...document.querySelectorAll('div > ul')].map(ul => {
             return {
@@ -163,529 +163,271 @@ class TextSparks
                             s :li.hasAttribute('data-saturation') ? Number(li.getAttribute('data-saturation')) : 100,
                             l :li.hasAttribute('data-lightness') ? Number(li.getAttribute('data-lightness')) : 50
                         },
-                        role : li.getAttribute('data-role') || '' // Get data-role, default to empty string if not present
+                        role : li.getAttribute('data-role') || ''
                     };
                 })
             };
         });
-
     }
 
     resize() {
-
         this.width  = window.innerWidth;
         this.height = window.innerHeight;
 
-        this.canvas.setAttribute('width', this.width);
-        this.canvas.setAttribute('height', this.height);
-
-        if (this.staticCanvas) { // Check if element exists
+        if(this.canvas){
+            this.canvas.setAttribute('width', this.width);
+            this.canvas.setAttribute('height', this.height);
+        }
+        if (this.staticCanvas) {
             this.staticCanvas.setAttribute('width', this.width);
             this.staticCanvas.setAttribute('height', this.height);
         }
         
         if (this.staticEngine) {
-            // Optional: set a fill style if you want a specific background,
-            // otherwise it will be transparent. For now, let's assume default clear.
             this.staticEngine.clearRect(0, 0, this.width, this.height);
         }
-
     }
 
     buildTextMask(texts) {
-        const mask = [];
-        const canvasWidth = 200; // Renamed from width to avoid conflict
-        const canvasHeight = 150; // Adjusted for two lines
+        const mask = []; // Will remain empty for this simplified test
+        const canvasWidth = 200; 
+        const canvasHeight = 150; 
 
         const mainNameTexts = texts.filter(t => t.role === 'main-name');
         const sectionsTexts = texts.filter(t => t.role === 'sections'); 
 
-        const canvas = document.createElement('canvas');
-        const engine = canvas.getContext('2d');
-        canvas.setAttribute('width', canvasWidth);
-        let targetWidthForSections = canvasWidth * 0.9; // Default, will be updated by main-name
+        const tempRenderCanvas = document.createElement('canvas'); 
+        const tempEngine = tempRenderCanvas.getContext('2d');
+        tempRenderCanvas.setAttribute('width', canvasWidth);
+        tempRenderCanvas.setAttribute('height', canvasHeight);
 
-        // --- Render "main-name" Text ---
+        // --- Render "main-name" Text (Simplified for Static Only) ---
         if (mainNameTexts.length > 0) {
             const mainNameString = mainNameTexts.map(t => t.text).join('');
-            const baseMainFontSize = 40; 
+            let fSizeMain = 20; // Fixed font size
             
-            engine.font = font(baseMainFontSize); 
-            let mMain = engine.measureText(mainNameString); 
-            let fSizeMain = Math.min(baseMainFontSize, (canvasWidth * 0.9 / mMain.width) * baseMainFontSize); 
-            fSizeMain = Math.max(fSizeMain, 1); 
+            tempEngine.font = font(fSizeMain); 
+            const fontWidthMain = tempEngine.measureText(mainNameString).width;
             
-            engine.font = font(fSizeMain); 
-            mMain = engine.measureText(mainNameString); 
-            const fontWidthMain = mMain.width; 
-            targetWidthForSections = fontWidthMain; // Step 1: Ensure this is active
-            
-            // Position main name text: Y centered in top half, X centered
             const yMainName = (canvasHeight / 4) + (fSizeMain / 3); 
-            let currentXMainName = (canvasWidth - fontWidthMain) / 2; 
+            let currentXMainNameOnTemp = (canvasWidth - fontWidthMain) / 2; 
 
             mainNameTexts.forEach(textStack => { 
-                engine.clearRect(0, 0, canvasWidth, canvasHeight);
-                engine.font = font(fSizeMain); 
-                engine.fillText(textStack.text, currentXMainName, yMainName);
+                // tempEngine.clearRect(0, 0, canvasWidth, canvasHeight); // Not strictly needed if only drawing once to static
+                // tempEngine.fillText(textStack.text, currentXMainNameOnTemp, yMainName); // Drawing on temp also not strictly needed for this test
 
-                if (this.staticEngine) {
+                if (this.staticEngine && this.width && this.height) { // Ensure staticEngine and dimensions are valid
                     const staticFSizeMain = fSizeMain * (this.width / canvasWidth);
                     this.staticEngine.font = font(staticFSizeMain);
                     this.staticEngine.fillStyle = color(textStack.hsl, 1);
-                    const staticXMain = (currentXMainName / canvasWidth) * this.width;
+                    const staticXMain = (currentXMainNameOnTemp / canvasWidth) * this.width;
                     const staticYMain = (yMainName / canvasHeight) * this.height;
+                    console.log("Static Main-Name:", textStack.text, "Font:", this.staticEngine.font, "Color:", this.staticEngine.fillStyle, "X:", staticXMain, "Y:", staticYMain);
                     this.staticEngine.fillText(textStack.text, staticXMain, staticYMain);
                 }
-                
-                const textPartWidth = engine.measureText(textStack.text).width;
-                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
-                const subStack = [];
-                for (let i = 0; i < data.data.length; i += 4) {
-                    if (data.data[i + 3] > 0) { 
-                        const pixelIndex = i / 4;
-                        subStack.push({
-                            x: (pixelIndex % canvasWidth) / canvasWidth,
-                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
-                            o: Math.random(),
-                            t: Math.random()
-                        });
-                    }
-                }
-                mask.push({ hsl: textStack.hsl, s: subStack });
-                currentXMainName += textPartWidth;
+                currentXMainNameOnTemp += tempEngine.measureText(textStack.text).width;
             });
         }
 
-        // --- Render "sections" Text --- (Step 1b: Uncomment/Re-add simplified block)
-        if (sectionsTexts.length > 0) { // Step 1b: Re-enabled
-            let fSizeSections = 10; // Step 2.c.i: Set fixed font size
-            engine.font = font(fSizeSections); // Step 2.c.ii: Apply font
-            const spacerWidth = engine.measureText(' ').width * 3; // Step 2.c.iii: Calculate spacer
+        // --- Render "sections" Text (Simplified for Static Only) ---
+        if (sectionsTexts.length > 0) {
+            let fSizeSections = 10; 
+            tempEngine.font = font(fSizeSections); 
+            const spacerWidthOnTemp = tempEngine.measureText(' ').width * 3; 
 
-            // Step 2.c.iv: Calculate total width with fixed settings
-            let sectionsContentWidth = 0;
+            let sectionsContentWidthOnTemp = 0;
             sectionsTexts.forEach((item, index) => {
-                sectionsContentWidth += engine.measureText(item.text).width;
+                sectionsContentWidthOnTemp += tempEngine.measureText(item.text).width;
                 if (index < sectionsTexts.length - 1) {
-                    sectionsContentWidth += spacerWidth;
+                    sectionsContentWidthOnTemp += spacerWidthOnTemp;
                 }
             });
 
-            // Step 2.c.v: Calculate initial X for centering this specific content
-            let currentXSections = (canvasWidth - sectionsContentWidth) / 2;
-            
-            // Step 2.d: Initial fSizeSections from fSizeMainVal (derived from fSizeMain)
-            let fSizeSections = fSizeMainVal * 0.5; 
-            let spacerWidth = 0; // Will be set inside loop
-            let currentTotalWidthSections = 0; // Will be set inside loop
-
-            // Safeguard for targetWidthForSections before the loop (already present and kept)
-            if (targetWidthForSections <= 0) {
-                console.log('Debug: targetWidthForSections is <= 0. Sections will use fallback size or not render effectively.');
-            }
-
-            // Step 2.a: Reintroduce iterative loop
-            for (let i = 0; i < 3; i++) {
-                console.log('Iter:', i, 'fSize_in:', fSizeSections, 'targetW:', targetWidthForSections); // Step 2.c Log
-                engine.font = font(fSizeSections);
-                spacerWidth = engine.measureText(' ').width * 3;
-                currentTotalWidthSections = 0;
-                sectionsTexts.forEach((item, idx) => {
-                    currentTotalWidthSections += engine.measureText(item.text).width;
-                    if (idx < sectionsTexts.length - 1) {
-                        currentTotalWidthSections += spacerWidth;
-                    }
-                });
-                console.log('Iter:', i, 'currentTotalW:', currentTotalWidthSections); // Step 2.c Log
-
-                // Safeguard before division (Step 2.b: No break)
-                if (currentTotalWidthSections <= 1 || targetWidthForSections <= 0) { 
-                    fSizeSections = 10; // Default small size
-                    console.log('Debug: Safeguard A hit. currentTotalWidthSections:', currentTotalWidthSections, 'targetWidthForSections:', targetWidthForSections, 'Setting fSizeSections to 10.');
-                    break; // ADD BREAK HERE
-                }
-                
-                console.log('Iter:', i, 'fSize_before_ratio:', fSizeSections); // Step 2.c Log
-                if (currentTotalWidthSections > 1 && targetWidthForSections > 0) { // Condition the actual scaling
-                    fSizeSections = fSizeSections * (targetWidthForSections / currentTotalWidthSections);
-                }
-                console.log('Iter:', i, 'fSize_after_ratio:', fSizeSections); // Step 2.c Log
-                
-                // Safeguard after division (Step 2.b: No break)
-                if (isNaN(fSizeSections) || !isFinite(fSizeSections)) {
-                    fSizeSections = 10; // Reset to a safe default
-                    console.log('Debug: Safeguard B hit. fSizeSections became NaN or Infinity. Resetting to 10.');
-                    break; // ADD BREAK HERE
-                }
-                fSizeSections = Math.max(fSizeSections, 1); // Ensure minimum 1px
-                console.log('Iter:', i, 'fSize_final_for_iter:', fSizeSections); // Step 2.c Log
-            }
-            
-            // Final font and spacer settings after iteration (or fallback)
-            engine.font = font(fSizeSections);
-            spacerWidth = engine.measureText(' ').width * 3; 
-
+            let currentXSectionsOnTemp = (canvasWidth - sectionsContentWidthOnTemp) / 2;
             const ySections = (canvasHeight * 0.75) + (fSizeSections / 3); 
-            // Step 3: Ensure centering uses targetWidthForSections
-            let currentXSections = (canvasWidth - targetWidthForSections) / 2;
 
             sectionsTexts.forEach((item, index) => { 
-                engine.clearRect(0, 0, canvasWidth, canvasHeight);
-                engine.fillText(item.text, currentXSections, ySections); 
+                // tempEngine.clearRect(0, 0, canvasWidth, canvasHeight); // Not strictly needed
+                // tempEngine.fillText(item.text, currentXSectionsOnTemp, ySections); // Not strictly needed
 
-                if (this.staticEngine) {
+                if (this.staticEngine && this.width && this.height) { // Ensure staticEngine and dimensions are valid
                     const staticFSizeSections = fSizeSections * (this.width / canvasWidth);
                     this.staticEngine.font = font(staticFSizeSections);
                     this.staticEngine.fillStyle = color(item.hsl, 1);
-                    const staticXSections = (currentXSections / canvasWidth) * this.width;
+                    const staticXSections = (currentXSectionsOnTemp / canvasWidth) * this.width;
                     const staticYSections = (ySections / canvasHeight) * this.height;
+                    console.log("Static Section:", item.text, "Font:", this.staticEngine.font, "Color:", this.staticEngine.fillStyle, "X:", staticXSections, "Y:", staticYSections);
                     this.staticEngine.fillText(item.text, staticXSections, staticYSections);
                 }
                 
-                const textPartWidth = engine.measureText(item.text).width;
-                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
-                const subStack = [];
-                for (let i = 0; i < data.data.length; i += 4) {
-                    if (data.data[i + 3] > 0) { 
-                        const pixelIndex = i / 4;
-                        subStack.push({
-                            x: (pixelIndex % canvasWidth) / canvasWidth,
-                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
-                            o: Math.random(),
-                            t: Math.random()
-                        });
-                    }
-                }
-                mask.push({ hsl: item.hsl, s: subStack }); // Used item.hsl
-                
-                currentXSections += textPartWidth;
+                currentXSectionsOnTemp += tempEngine.measureText(item.text).width;
                 if (index < sectionsTexts.length - 1) {
-                    currentXSections += spacerWidth;
+                    currentXSectionsOnTemp += spacerWidthOnTemp;
                 }
             });
-            // targetWidthForSections is now used for centering the sections block
         }
-        return mask;
+        return mask; // Will be empty
     }
 
+    // createNewParticle() is problematic - REMOVE THE DUPLICATED MASKING/RENDERING LOGIC FROM IT
+    // For this test, ensure it does NOT attempt to re-render text or build masks.
+    // It should only use this.mask if it's populated (which it won't be in this test).
     createNewParticle() {
-        canvas.setAttribute('height', canvasHeight);
-        let targetWidthForSections = canvasWidth * 0.9; // Default target width
-
-        // --- Render "main-name" Text ---
-        if (mainNameTexts.length > 0) {
-            const mainNameString = mainNameTexts.map(t => t.text).join('');
-            const baseMainFontSize = 40; // Larger base for main name
-            
-            engine.font = font(baseMainFontSize);
-            let mMain = engine.measureText(mainNameString);
-            // Adjust font size to fit width, aiming for 90% of canvas width
-            let fSizeMain = Math.min(baseMainFontSize, (canvasWidth * 0.9 / mMain.width) * baseMainFontSize);
-            
-            engine.font = font(fSizeMain);
-            mMain = engine.measureText(mainNameString); // Re-measure with new font size
-            const fontWidthMain = mMain.width;
-            
-            // Position main name text: Y centered in top half, X centered
-            const yMainName = (canvasHeight / 4) + (fSizeMain / 3); // Adjusted for better centering in top half
-            let currentXMainName = (canvasWidth - fontWidthMain) / 2;
-
-            mainNameTexts.forEach(textStack => {
-                engine.clearRect(0, 0, canvasWidth, canvasHeight);
-                engine.font = font(fSizeMain); // Ensure font is set for each part
-                engine.fillText(textStack.text, currentXMainName, yMainName);
-                
-                const textPartWidth = engine.measureText(textStack.text).width;
-                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
-                const subStack = [];
-                for (let i = 0; i < data.data.length; i += 4) {
-                    if (data.data[i + 3] > 0) { // Check alpha channel
-                        const pixelIndex = i / 4;
-                        subStack.push({
-                            x: (pixelIndex % canvasWidth) / canvasWidth,
-                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
-                            o: Math.random(),
-                            t: Math.random()
-                        });
-                    }
-                }
-                mask.push({ hsl: textStack.hsl, s: subStack });
-                currentXMainName += textPartWidth;
-            });
-        }
-
-        // --- Render "sections" Text ---
-        if (sectionsTexts.length > 0) {
-            const sectionsString = sectionsTexts.map(t => t.text).join('');
-            // fSizeMain might not be defined if mainNameTexts is empty, handle this.
-            // However, problem implies both exist. Assume fSizeMain is available from previous block or set a default.
-            // For safety, let's use a base size related to canvasHeight if fSizeMain wasn't set.
-            let fSizeMainVal = 30; // Default base for sections if mainNameTexts was empty
-            if (mainNameTexts.length > 0 && engine.font.includes("px")) {
-                // Safely get fSizeMain from the engine.font set in the previous block
-                const fontMatch = engine.font.match(/(\d+)px/);
-                if (fontMatch && fontMatch[1]) {
-                    fSizeMainVal = parseFloat(fontMatch[1]);
-                }
-            }
-            
-            const baseSectionsFontSize = fSizeMainVal * 0.5; 
-            engine.font = font(baseSectionsFontSize); // Set with base sections font
-            let mSections = engine.measureText(sectionsString); // Measure
-            
-            // Scale fSizeSections to fit width, similar to fSizeMain
-            let fSizeSections = Math.min(baseSectionsFontSize, (canvasWidth * 0.9 / mSections.width) * baseSectionsFontSize);
-            fSizeSections = Math.max(fSizeSections, 1); // Ensure minimum font size of 1px
-
-            engine.font = font(fSizeSections); // Set to final, fitted fSizeSections
-            // Re-measure with final font size for accurate centering
-            const fontWidthSections = engine.measureText(sectionsString).width; 
-            const spacerWidth = engine.measureText(' ').width * 3; // Define spacer width
-
-            // Position sections text: Y centered in bottom half, X centered (centers the text part only)
-            const ySections = (canvasHeight * 0.75) + (fSizeSections / 3); // Adjusted for better centering in bottom half
-            let currentXSections = (canvasWidth - fontWidthSections) / 2;
-
-            sectionsTexts.forEach((textStack, index) => {
-                engine.clearRect(0, 0, canvasWidth, canvasHeight);
-                engine.font = font(fSizeSections); // Ensure font is set for each part
-                // Fill text for current li at the currentXSections
-                engine.fillText(textStack.text, currentXSections, ySections);
-                
-                const textPartWidth = engine.measureText(textStack.text).width;
-                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
-                const subStack = [];
-                for (let i = 0; i < data.data.length; i += 4) {
-                    if (data.data[i + 3] > 0) {
-                        const pixelIndex = i / 4;
-                        subStack.push({
-                            x: (pixelIndex % canvasWidth) / canvasWidth,
-                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
-                            o: Math.random(),
-                            t: Math.random()
-                        });
-                    }
-                }
-                mask.push({ hsl: textStack.hsl, s: subStack });
-                
-                // Advance currentXSections for the NEXT word
-                currentXSections += textPartWidth; // Move past the word just drawn
-                if (index < sectionsTexts.length - 1) { // If not the last word
-                    currentXSections += spacerWidth; // Add space
-                }
-            });
-        }
-        return mask;
-    }
-
-    createNewParticle() {
+        // Temporarily simplified to do nothing if mask is empty, or use it if available
+        if (!this.mask || this.mask.length === 0) return; // Guard against empty mask
 
         for (let i = 0; i < newParticlesPerFrame; i++) {
-
             let main        = Math.random() * this.mask.length | 0;
-            let subMask     = this.mask[main];
-            let maskElement = this.mask[main].s[Math.random() * this.mask[main].s.length | 0];
+            // Ensure this.mask[main] and this.mask[main].s are valid before proceeding
+            if (this.mask[main] && this.mask[main].s && this.mask[main].s.length > 0) {
+                let subMask     = this.mask[main];
+                let maskElement = subMask.s[Math.random() * subMask.s.length | 0];
 
-            if (subMask && maskElement) {
-                let particle = {
-                    x   : maskElement.x,
-                    y   : maskElement.y,
-                    hsl : subMask.hsl,
-                    c   : this.prepareParticle
-                };
-
-                this.particleMap.set(particle, particle);
+                if (maskElement) { // Ensure maskElement is not undefined
+                    let particle = {
+                        x   : maskElement.x,
+                        y   : maskElement.y,
+                        hsl : subMask.hsl,
+                        c   : this.prepareParticle
+                    };
+                    this.particleMap.set(particle, particle);
+                }
             }
-
         }
     }
 
-    secLog(log, timesPerFrame) {
-        if(Math.random() < 1 / 60 / timesPerFrame) {
-            console.log(log);
-        }
-    }
 
     clear() {
-        this.engine.fillStyle = '#111';
-        this.engine.fillRect(0, 0, this.width, this.height);
+        if(this.engine) { // Guard against null engine
+            this.engine.fillStyle = '#111';
+            this.engine.fillRect(0, 0, this.width, this.height);
+        }
     }
 
-    randFromList(...rands) {
+    prepareParticle(particle) {
+        const r1 = Math.random();
+        const r2 = Math.random();
+        const r3 = Math.random();
+        const rad = r3 * Math.PI * 2;
+        particle.x += (-0.5 + r1) / 300;
+        particle.y += (-0.5 + r2) / 300;
+        particle.si = 1 + Math.random() * 4 | 0;
+        particle.s = 0.003 + this.randFromList(r1, r2) / 10;
+        particle.l = 0;
+        particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
+        particle.my = Math.sin(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
+        particle.c = this.drawParticle;
+    }
+    
+    randFromList(...rands) { // Added this missing helper method
         return rands.reduce((acc, rand) => {
             return acc + rand;
         }, 0) / rands.length;
     }
 
-    prepareParticle(particle) {
-
-        const r1 = Math.random();
-        const r2 = Math.random();
-        const r3 = Math.random();
-
-        const rad = r3 * Math.PI * 2;
-
-        particle.x += (-0.5 + r1) / 300;
-        particle.y += (-0.5 + r2) / 300;
-        particle.si = 1 + Math.random() * 4 | 0;
-        // particle.cc = this.randFromList(r2, r3);
-        // particle.cc = this.hue / 365;
-
-        particle.s = 0.003 + this.randFromList(r1, r2) / 10;
-        particle.l = 0;
-
-        particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
-        particle.my = Math.sin(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
-
-        particle.c = this.drawParticle;
-    }
-
     drawParticle(particle) {
-
         if (particle.l >= 1) {
             particle.c = null;
             return;
         }
-
         particle.l += particle.s;
         particle.x += particle.mx;
         particle.y += particle.my;
-
-        this.engine.fillStyle = color(particle.hsl, this.opa * Math.sin(particle.l * Math.PI));
-        this.engine.fillRect(particle.x * this.width, particle.y * this.height, particle.si, particle.si);
-
+        if(this.engine){ // Guard
+            this.engine.fillStyle = color(particle.hsl, this.opa * Math.sin(particle.l * Math.PI));
+            this.engine.fillRect(particle.x * this.width, particle.y * this.height, particle.si, particle.si);
+        }
     }
 
     renderParticles() {
-
         this.particleMap.forEach((particle) => {
-
             particle.c.call(this, particle);
-
             if (!particle.c) {
                 this.particleMap.delete(particle);
             }
-
         });
-
     }
 
-    drawStatic() {
+    drawStatic() { // This refers to the particle static shimmer, not the new static background text
+        if (!this.mask || this.mask.length === 0 || !this.engine) return; // Guard
 
         let i = 0;
         const step = 0.01;
-
         this.mask.forEach(subMask => {
-            subMask.s.forEach(pos => {
-
-                i++;
-
-                this.engine.fillStyle = color(subMask.hsl, (1 + Math.cos(pos.x * 5 * pos.y * 5 + this.tick / 10)) / 2 * this.opa * pos.t * 0.5);
-                this.engine.fillRect(
-                    pos.x * this.width,
-                    pos.y * this.height,
-                    this.width / 150,
-                    this.width / 150
-                );
-
-                if (i % 2) {
-                    return;
-                }
-
-                pos.o        += step;
-                const opa     = Math.max(0, Math.sin(pos.o * Math.PI * 2));
-                const padding = opa * this.width / 200;
-
-                this.engine.fillStyle = color(subMask.hsl, this.opa * opa * 0.2);
-
-                if (pos.t < 0.5) {
-                    this.engine.beginPath();
-                    this.engine.arc(
-                        pos.x * this.width,
-                        pos.y * this.height,
-                        this.width / 500  + padding,
-                        0,
-                        Math.PI * 2
-                    );
-                    this.engine.fill();
-                } else {
-                    this.engine.fillRect(
-                        pos.x * this.width - padding,
-                        pos.y * this.height - padding,
-                        this.width / 150  + padding * 2,
-                        this.width / 150  + padding * 2
-                    );
-                }
-
-            });
+            if (subMask && subMask.s) { // Guard subMask and subMask.s
+                subMask.s.forEach(pos => {
+                    i++;
+                    this.engine.fillStyle = color(subMask.hsl, (1 + Math.cos(pos.x * 5 * pos.y * 5 + this.tick / 10)) / 2 * this.opa * pos.t * 0.5);
+                    this.engine.fillRect(pos.x * this.width, pos.y * this.height, this.width / 150, this.width / 150);
+                    if (i % 2) return;
+                    pos.o += step;
+                    const opa = Math.max(0, Math.sin(pos.o * Math.PI * 2));
+                    const padding = opa * this.width / 200;
+                    this.engine.fillStyle = color(subMask.hsl, this.opa * opa * 0.2);
+                    if (pos.t < 0.5) {
+                        this.engine.beginPath();
+                        this.engine.arc(pos.x * this.width, pos.y * this.height, this.width / 500  + padding, 0, Math.PI * 2);
+                        this.engine.fill();
+                    } else {
+                        this.engine.fillRect(pos.x * this.width - padding, pos.y * this.height - padding, this.width / 150  + padding * 2, this.width / 150  + padding * 2);
+                    }
+                });
+            }
         });
-
-
-
     }
 
     draw() {
-
         this.tick++;
+        if(this.nextMaskCb) this.nextMaskCb(); // Guard
+        if(this.mask && this.mask.length > 0) this.createNewParticle(); // Only create if mask is valid
+        this.clear(); // Clears animation canvas
 
-        this.nextMaskCb();
-        this.createNewParticle();
-        this.clear();
-
-        this.engine.globalCompositeOperation = 'lighter';
-        this.drawStatic();
-        this.renderParticles();
-        this.engine.globalCompositeOperation = 'source-over';
-
-        requestAnimationFrame(this.drawCB);
-
+        if(this.engine) { // Guard
+            this.engine.globalCompositeOperation = 'lighter';
+            this.drawStatic(); // Particle shimmer
+            this.renderParticles();
+            this.engine.globalCompositeOperation = 'source-over';
+        }
+        if(this.drawCB) requestAnimationFrame(this.drawCB); // Guard
     }
 
+    // ... (fadeInMask, afterFadeIn, fadeOutMask, afterFadeOut, tickMask, nextMask are fine) ...
     fadeInMask() {
+        if (!this.stack || !this.stack[this.stackId]) return; // Guard
         this.opa += this.stack[this.stackId].fadeIn;
-
         if (this.opa >= 1) {
             this.opa = 1;
-
             this.afterFadeIn();
         }
     }
 
     afterFadeIn() {
-
+        if (!this.stack || !this.stack[this.stackId]) return; // Guard
         this.opa = 1;
-
         if (this.stack[this.stackId].ticks) {
             this.maskTick   = 0;
             this.nextMaskCb = this.tickMask.bind(this);
         } else {
             this.nextMaskCb = () => {};
         }
-
     }
 
     fadeOutMask() {
-
+        if (!this.stack || !this.stack[this.stackId]) return; // Guard
         this.opa -= this.stack[this.stackId].fadeOut;
-
         if (this.opa <= 0) {
             this.afterFadeOut();
         }
-
     }
 
     afterFadeOut() {
-
         this.opa = 0;
         this.nextMaskCb = this.nextMask.bind(this);
-
     }
 
     tickMask() {
-
+        if (!this.stack || !this.stack[this.stackId]) return; // Guard
         this.maskTick++;
-
         if (this.maskTick >= this.stack[this.stackId].ticks) {
             if (this.stack[this.stackId].fadeOut) {
                 this.nextMaskCb = this.fadeOutMask.bind(this);
@@ -693,20 +435,17 @@ class TextSparks
                 this.afterFadeOut();
             }
         }
-
     }
 
     nextMask() {
-
+        if (!this.stack || this.stack.length === 0) return; // Guard
         this.stackId++;
-
         if (this.stackId >= this.stack.length) {
             this.stackId = 0;
         }
-
-        this.mask = this.maskCache[this.stackId];
-
-        if (this.stack[this.stackId].fadeIn) {
+        if (!this.maskCache) return; // Guard
+        this.mask = this.maskCache[this.stackId]; // this.mask could be empty if buildTextMask returns []
+        if (this.stack[this.stackId] && this.stack[this.stackId].fadeIn) { // Guard stack item
             this.nextMaskCb = this.fadeInMask.bind(this);
         } else {
             this.opa = 1;
@@ -714,11 +453,11 @@ class TextSparks
         }
     }
 
-    run() {
 
+    run() {
+        console.log("TextSparks run: Called.");
         this.drawCB = this.draw.bind(this);
         this.drawCB();
-
     }
 }
 
