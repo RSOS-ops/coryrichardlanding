@@ -81,7 +81,7 @@
       <div class="section">Tech</div>
     </div>
     <script>
-      const newParticlesPerFrame = 50;
+      const newParticlesPerFrame = 25;
 
       const color = (hsl, o) => {
         return `hsla(${hsl.h | 0}, ${hsl.s}%, ${hsl.l}%, ${o})`;
@@ -316,7 +316,7 @@
           this.mask.forEach(subMask => {
             subMask.s.forEach(pos => {
               i++;
-              this.engine.fillStyle = color(subMask.hsl, (1 + Math.cos(pos.x * 5 * pos.y * 5 + this.tick / 10)) / 2 * this.opa * pos.t * 0.5);
+              this.engine.fillStyle = color(subMask.hsl, ((Math.sin(pos.x * 2 + pos.y * 2 + this.tick / 15) + 1) / 2) * this.opa * pos.t * 0.5);
               this.engine.fillRect(
                 pos.x * this.width,
                 pos.y * this.height,
