@@ -25,9 +25,22 @@
             font-family: 'Roboto', sans-serif; /* Added a default font */
         }
         /* div { display:none; } Removed as it hides essential content including the animation div */
-        canvas {
+        /* canvas {
             width:100vw;
             height:100vh;
+        } */
+        #staticTextCanvas, #animationCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+        #staticTextCanvas {
+            z-index: 0;
+        }
+        #animationCanvas {
+            z-index: 1;
         }
         h1 {
             font-size: 4em; /* "Very large" text */
@@ -78,7 +91,8 @@
         <li data-hue="45" data-role="sections">Tech</li>
       </ul>
     </div>
-    <canvas></canvas>
+    <canvas id="staticTextCanvas"></canvas>
+    <canvas id="animationCanvas"></canvas>
     <h1>Coming Soon</h1>
     <div id="sections-container" style="display: none;">
         <div class="section">DJ</div>
@@ -101,8 +115,17 @@ class TextSparks
         this.tick   = 0;
         this.drawCB = null;
         this.mask   = null;
-        this.canvas = window.document.querySelector('canvas');
+        // Select the animation canvas specifically
+        this.canvas = window.document.querySelector('#animationCanvas'); 
         this.engine = this.canvas.getContext('2d');
+        
+        // Get static canvas and context
+        this.staticCanvas = window.document.querySelector('#staticTextCanvas');
+        if (this.staticCanvas) { // Check if element exists
+            this.staticEngine = this.staticCanvas.getContext('2d');
+        } else {
+            console.error("#staticTextCanvas not found!");
+        }
 
         this.maskTick   = 0;
         this.nextMaskCb = this.nextMask.bind(this);
@@ -156,6 +179,17 @@ class TextSparks
         this.canvas.setAttribute('width', this.width);
         this.canvas.setAttribute('height', this.height);
 
+        if (this.staticCanvas) { // Check if element exists
+            this.staticCanvas.setAttribute('width', this.width);
+            this.staticCanvas.setAttribute('height', this.height);
+        }
+        
+        if (this.staticEngine) {
+            // Optional: set a fill style if you want a specific background,
+            // otherwise it will be transparent. For now, let's assume default clear.
+            this.staticEngine.clearRect(0, 0, this.width, this.height);
+        }
+
     }
 
     buildTextMask(texts) {
@@ -164,15 +198,180 @@ class TextSparks
         const canvasHeight = 150; // Adjusted for two lines
 
         const mainNameTexts = texts.filter(t => t.role === 'main-name');
-        const sectionsTexts = texts.filter(t => t.role === 'sections');
+        const sectionsTexts = texts.filter(t => t.role === 'sections'); 
 
         const canvas = document.createElement('canvas');
         const engine = canvas.getContext('2d');
         canvas.setAttribute('width', canvasWidth);
-        canvas.setAttribute('height', canvasHeight);
+        let targetWidthForSections = canvasWidth * 0.9; // Default, will be updated by main-name
 
-        const font = (size) => `bold ${size}px Arial`;
-        engine.fillStyle = '#000'; // Color of text to draw (then read as mask)
+        // --- Render "main-name" Text ---
+        if (mainNameTexts.length > 0) {
+            const mainNameString = mainNameTexts.map(t => t.text).join('');
+            const baseMainFontSize = 40; 
+            
+            engine.font = font(baseMainFontSize); 
+            let mMain = engine.measureText(mainNameString); 
+            let fSizeMain = Math.min(baseMainFontSize, (canvasWidth * 0.9 / mMain.width) * baseMainFontSize); 
+            fSizeMain = Math.max(fSizeMain, 1); 
+            
+            engine.font = font(fSizeMain); 
+            mMain = engine.measureText(mainNameString); 
+            const fontWidthMain = mMain.width; 
+            targetWidthForSections = fontWidthMain; // Step 1: Ensure this is active
+            
+            // Position main name text: Y centered in top half, X centered
+            const yMainName = (canvasHeight / 4) + (fSizeMain / 3); 
+            let currentXMainName = (canvasWidth - fontWidthMain) / 2; 
+
+            mainNameTexts.forEach(textStack => { 
+                engine.clearRect(0, 0, canvasWidth, canvasHeight);
+                engine.font = font(fSizeMain); 
+                engine.fillText(textStack.text, currentXMainName, yMainName);
+
+                if (this.staticEngine) {
+                    const staticFSizeMain = fSizeMain * (this.width / canvasWidth);
+                    this.staticEngine.font = font(staticFSizeMain);
+                    this.staticEngine.fillStyle = color(textStack.hsl, 1);
+                    const staticXMain = (currentXMainName / canvasWidth) * this.width;
+                    const staticYMain = (yMainName / canvasHeight) * this.height;
+                    this.staticEngine.fillText(textStack.text, staticXMain, staticYMain);
+                }
+                
+                const textPartWidth = engine.measureText(textStack.text).width;
+                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+                const subStack = [];
+                for (let i = 0; i < data.data.length; i += 4) {
+                    if (data.data[i + 3] > 0) { 
+                        const pixelIndex = i / 4;
+                        subStack.push({
+                            x: (pixelIndex % canvasWidth) / canvasWidth,
+                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
+                            o: Math.random(),
+                            t: Math.random()
+                        });
+                    }
+                }
+                mask.push({ hsl: textStack.hsl, s: subStack });
+                currentXMainName += textPartWidth;
+            });
+        }
+
+        // --- Render "sections" Text --- (Step 1b: Uncomment/Re-add simplified block)
+        if (sectionsTexts.length > 0) { // Step 1b: Re-enabled
+            let fSizeSections = 10; // Step 2.c.i: Set fixed font size
+            engine.font = font(fSizeSections); // Step 2.c.ii: Apply font
+            const spacerWidth = engine.measureText(' ').width * 3; // Step 2.c.iii: Calculate spacer
+
+            // Step 2.c.iv: Calculate total width with fixed settings
+            let sectionsContentWidth = 0;
+            sectionsTexts.forEach((item, index) => {
+                sectionsContentWidth += engine.measureText(item.text).width;
+                if (index < sectionsTexts.length - 1) {
+                    sectionsContentWidth += spacerWidth;
+                }
+            });
+
+            // Step 2.c.v: Calculate initial X for centering this specific content
+            let currentXSections = (canvasWidth - sectionsContentWidth) / 2;
+            
+            // Step 2.d: Initial fSizeSections from fSizeMainVal (derived from fSizeMain)
+            let fSizeSections = fSizeMainVal * 0.5; 
+            let spacerWidth = 0; // Will be set inside loop
+            let currentTotalWidthSections = 0; // Will be set inside loop
+
+            // Safeguard for targetWidthForSections before the loop (already present and kept)
+            if (targetWidthForSections <= 0) {
+                console.log('Debug: targetWidthForSections is <= 0. Sections will use fallback size or not render effectively.');
+            }
+
+            // Step 2.a: Reintroduce iterative loop
+            for (let i = 0; i < 3; i++) {
+                console.log('Iter:', i, 'fSize_in:', fSizeSections, 'targetW:', targetWidthForSections); // Step 2.c Log
+                engine.font = font(fSizeSections);
+                spacerWidth = engine.measureText(' ').width * 3;
+                currentTotalWidthSections = 0;
+                sectionsTexts.forEach((item, idx) => {
+                    currentTotalWidthSections += engine.measureText(item.text).width;
+                    if (idx < sectionsTexts.length - 1) {
+                        currentTotalWidthSections += spacerWidth;
+                    }
+                });
+                console.log('Iter:', i, 'currentTotalW:', currentTotalWidthSections); // Step 2.c Log
+
+                // Safeguard before division (Step 2.b: No break)
+                if (currentTotalWidthSections <= 1 || targetWidthForSections <= 0) { 
+                    fSizeSections = 10; // Default small size
+                    console.log('Debug: Safeguard A hit. currentTotalWidthSections:', currentTotalWidthSections, 'targetWidthForSections:', targetWidthForSections, 'Setting fSizeSections to 10.');
+                    break; // ADD BREAK HERE
+                }
+                
+                console.log('Iter:', i, 'fSize_before_ratio:', fSizeSections); // Step 2.c Log
+                if (currentTotalWidthSections > 1 && targetWidthForSections > 0) { // Condition the actual scaling
+                    fSizeSections = fSizeSections * (targetWidthForSections / currentTotalWidthSections);
+                }
+                console.log('Iter:', i, 'fSize_after_ratio:', fSizeSections); // Step 2.c Log
+                
+                // Safeguard after division (Step 2.b: No break)
+                if (isNaN(fSizeSections) || !isFinite(fSizeSections)) {
+                    fSizeSections = 10; // Reset to a safe default
+                    console.log('Debug: Safeguard B hit. fSizeSections became NaN or Infinity. Resetting to 10.');
+                    break; // ADD BREAK HERE
+                }
+                fSizeSections = Math.max(fSizeSections, 1); // Ensure minimum 1px
+                console.log('Iter:', i, 'fSize_final_for_iter:', fSizeSections); // Step 2.c Log
+            }
+            
+            // Final font and spacer settings after iteration (or fallback)
+            engine.font = font(fSizeSections);
+            spacerWidth = engine.measureText(' ').width * 3; 
+
+            const ySections = (canvasHeight * 0.75) + (fSizeSections / 3); 
+            // Step 3: Ensure centering uses targetWidthForSections
+            let currentXSections = (canvasWidth - targetWidthForSections) / 2;
+
+            sectionsTexts.forEach((item, index) => { 
+                engine.clearRect(0, 0, canvasWidth, canvasHeight);
+                engine.fillText(item.text, currentXSections, ySections); 
+
+                if (this.staticEngine) {
+                    const staticFSizeSections = fSizeSections * (this.width / canvasWidth);
+                    this.staticEngine.font = font(staticFSizeSections);
+                    this.staticEngine.fillStyle = color(item.hsl, 1);
+                    const staticXSections = (currentXSections / canvasWidth) * this.width;
+                    const staticYSections = (ySections / canvasHeight) * this.height;
+                    this.staticEngine.fillText(item.text, staticXSections, staticYSections);
+                }
+                
+                const textPartWidth = engine.measureText(item.text).width;
+                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+                const subStack = [];
+                for (let i = 0; i < data.data.length; i += 4) {
+                    if (data.data[i + 3] > 0) { 
+                        const pixelIndex = i / 4;
+                        subStack.push({
+                            x: (pixelIndex % canvasWidth) / canvasWidth,
+                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
+                            o: Math.random(),
+                            t: Math.random()
+                        });
+                    }
+                }
+                mask.push({ hsl: item.hsl, s: subStack }); // Used item.hsl
+                
+                currentXSections += textPartWidth;
+                if (index < sectionsTexts.length - 1) {
+                    currentXSections += spacerWidth;
+                }
+            });
+            // targetWidthForSections is now used for centering the sections block
+        }
+        return mask;
+    }
+
+    createNewParticle() {
+        canvas.setAttribute('height', canvasHeight);
+        let targetWidthForSections = canvasWidth * 0.9; // Default target width
 
         // --- Render "main-name" Text ---
         if (mainNameTexts.length > 0) {
@@ -231,7 +430,7 @@ class TextSparks
                 }
             }
             
-            const baseSectionsFontSize = fSizeMainVal * 0.6; 
+            const baseSectionsFontSize = fSizeMainVal * 0.5; 
             engine.font = font(baseSectionsFontSize); // Set with base sections font
             let mSections = engine.measureText(sectionsString); // Measure
             
@@ -242,14 +441,16 @@ class TextSparks
             engine.font = font(fSizeSections); // Set to final, fitted fSizeSections
             // Re-measure with final font size for accurate centering
             const fontWidthSections = engine.measureText(sectionsString).width; 
+            const spacerWidth = engine.measureText(' ').width * 3; // Define spacer width
 
-            // Position sections text: Y centered in bottom half, X centered
+            // Position sections text: Y centered in bottom half, X centered (centers the text part only)
             const ySections = (canvasHeight * 0.75) + (fSizeSections / 3); // Adjusted for better centering in bottom half
             let currentXSections = (canvasWidth - fontWidthSections) / 2;
 
-            sectionsTexts.forEach(textStack => {
+            sectionsTexts.forEach((textStack, index) => {
                 engine.clearRect(0, 0, canvasWidth, canvasHeight);
                 engine.font = font(fSizeSections); // Ensure font is set for each part
+                // Fill text for current li at the currentXSections
                 engine.fillText(textStack.text, currentXSections, ySections);
                 
                 const textPartWidth = engine.measureText(textStack.text).width;
@@ -267,7 +468,12 @@ class TextSparks
                     }
                 }
                 mask.push({ hsl: textStack.hsl, s: subStack });
-                currentXSections += textPartWidth;
+                
+                // Advance currentXSections for the NEXT word
+                currentXSections += textPartWidth; // Move past the word just drawn
+                if (index < sectionsTexts.length - 1) { // If not the last word
+                    currentXSections += spacerWidth; // Add space
+                }
             });
         }
         return mask;
