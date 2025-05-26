@@ -81,7 +81,8 @@
       <div class="section">Tech</div>
     </div>
     <script>
-      const newParticlesPerFrame = 25;
+      const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+      const newParticlesPerFrame = isMobile ? 5 : 25;
 
       const color = (hsl, o) => {
         return `hsla(${hsl.h | 0}, ${hsl.s}%, ${hsl.l}%, ${o})`;
@@ -91,16 +92,16 @@
         constructor() {
           this.opa = 0;
           this.tick = 0;
-          this.drawCB = null;
           this.mask = null;
           this.canvas = window.document.querySelector('canvas');
           this.engine = this.canvas.getContext('2d');
           this.maskTick = 0;
           this.nextMaskCb = this.nextMask.bind(this);
           this.maskCache = [];
+          this.cachedStackData = null; // Initialize cache property
 
           this.resize();
-          this.fetchData();
+          this.fetchData(); // Initial call
           this.buildStackCache();
           this.particleMap = new Map();
         }
@@ -112,10 +113,16 @@
         }
 
         fetchData() {
-          this.stackId = -1;
-          this.stack = [...document.querySelectorAll('div > ul')].map(ul => {
-            return {
-              ticks: 0.05 * (ul.hasAttribute('data-time') ? ul.getAttribute('data-time') : 0),
+            if (this.cachedStackData) {
+                this.stack = this.cachedStackData; // Use cached data
+                this.stackId = -1; // Reset stackId if necessary for re-runs
+                return;
+            }
+
+            this.stackId = -1;
+            const rawStack = [...document.querySelectorAll('div > ul')].map(ul => {
+                return {
+                    ticks: 0.05 * (ul.hasAttribute('data-time') ? ul.getAttribute('data-time') : 0),
               fadeIn: ul.hasAttribute('data-fade-in') ? 50 / Number(ul.getAttribute('data-fade-in')) : 0,
               fadeOut: ul.hasAttribute('data-fade-out') ? 50 / Number(ul.getAttribute('data-fade-out')) : 0,
               texts: [...ul.querySelectorAll('li')].map(li => {
@@ -131,13 +138,21 @@
               })
             };
           });
+          this.stack = rawStack;
+          this.cachedStackData = rawStack; // Cache the processed data
         }
 
         resize() {
-          this.width = window.innerWidth;
-          this.height = window.innerHeight;
-          this.canvas.setAttribute('width', this.width);
-          this.canvas.setAttribute('height', this.height);
+          const ratio = isMobile ? 1.5 : 1; // Use 1.5 for mobile as suggested
+          this.width = window.innerWidth / ratio;
+          this.height = window.innerHeight / ratio;
+
+          this.canvas.style.width = window.innerWidth + 'px';
+          this.canvas.style.height = window.innerHeight + 'px';
+
+          // Important: Set the actual drawing buffer size
+          this.canvas.width = this.width;
+          this.canvas.height = this.height;
         }
 
         buildTextMask(texts) {
@@ -236,6 +251,7 @@
         }
 
         createNewParticle() {
+          if (this.particleMap.size > (isMobile ? 400 : 1000)) return; // Cap total particles
           for (let i = 0; i < newParticlesPerFrame; i++) {
             let main = Math.random() * this.mask.length | 0;
             let subMask = this.mask[main];
@@ -356,16 +372,15 @@
           });
         }
 
-        draw() {
-          this.tick++;
-          this.nextMaskCb();
-          this.createNewParticle();
-          this.clear();
-          this.engine.globalCompositeOperation = 'lighter';
-          this.drawStatic();
-          this.renderParticles();
-          this.engine.globalCompositeOperation = 'source-over';
-          requestAnimationFrame(this.drawCB);
+        performFrameAnimation() { // This method contains the original logic of draw()
+            this.tick++;
+            this.nextMaskCb();
+            this.createNewParticle();
+            this.clear();
+            this.engine.globalCompositeOperation = 'lighter';
+            this.drawStatic();
+            this.renderParticles();
+            this.engine.globalCompositeOperation = 'source-over';
         }
 
         fadeInMask() {
@@ -424,8 +439,18 @@
         }
 
         run() {
-          this.drawCB = this.draw.bind(this);
-          this.drawCB();
+            let last = 0;
+            const targetFPS = isMobile ? 30 : 60;
+            const frameDuration = 1000 / targetFPS;
+
+            this.animationLoop = (now) => {
+                if (!last || now - last >= frameDuration) {
+                    last = now - ((now - last) % frameDuration);
+                    this.performFrameAnimation();
+                }
+                requestAnimationFrame(this.animationLoop);
+            };
+            requestAnimationFrame(this.animationLoop);
         }
       }
 
