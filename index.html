@@ -81,22 +81,22 @@
       <div class="section">Tech</div>
     </div>
     <script>
-      const newParticlesPerFrame = 50;
+      const newParticlesPerFrame = 15;
 
-      const color = (hsl, o) => {
-        return `hsla(${hsl.h | 0}, ${hsl.s}%, ${hsl.l}%, ${o})`;
+      const formatHSLColor = (hslColor, opacity) => {
+        return `hsla(${hslColor.h | 0}, ${hslColor.s}%, ${hslColor.l}%, ${opacity})`;
       };
 
       class TextSparks {
         constructor() {
-          this.opa = 0;
-          this.tick = 0;
-          this.drawCB = null;
-          this.mask = null;
+          this.currentOpacity = 0;
+          this.animationTick = 0;
+          this.drawCallback = null;
+          this.currentMask = null;
           this.canvas = window.document.querySelector('canvas');
-          this.engine = this.canvas.getContext('2d');
+          this.renderingEngine = this.canvas.getContext('2d');
           this.maskTick = 0;
-          this.nextMaskCb = this.nextMask.bind(this);
+          this.nextMaskCallback = this.nextMask.bind(this);
           this.maskCache = [];
 
           this.resize();
@@ -106,27 +106,27 @@
         }
 
         buildStackCache() {
-          this.maskCache = this.stack.map((stack) => {
-            return this.buildTextMask(stack.texts);
+          this.maskCache = this.textAnimationStack.map((stackItem) => {
+            return this.buildTextMask(stackItem.texts);
           });
         }
 
         fetchData() {
-          this.stackId = -1;
-          this.stack = [...document.querySelectorAll('div > ul')].map(ul => {
+          this.currentStackId = -1;
+          this.textAnimationStack = [...document.querySelectorAll('div > ul')].map(ulElement => {
             return {
-              ticks: 0.05 * (ul.hasAttribute('data-time') ? ul.getAttribute('data-time') : 0),
-              fadeIn: ul.hasAttribute('data-fade-in') ? 50 / Number(ul.getAttribute('data-fade-in')) : 0,
-              fadeOut: ul.hasAttribute('data-fade-out') ? 50 / Number(ul.getAttribute('data-fade-out')) : 0,
-              texts: [...ul.querySelectorAll('li')].map(li => {
+              durationTicks: 0.05 * (ulElement.hasAttribute('data-time') ? ulElement.getAttribute('data-time') : 0),
+              fadeInSpeed: ulElement.hasAttribute('data-fade-in') ? 50 / Number(ulElement.getAttribute('data-fade-in')) : 0,
+              fadeOutSpeed: ulElement.hasAttribute('data-fade-out') ? 50 / Number(ulElement.getAttribute('data-fade-out')) : 0,
+              texts: [...ulElement.querySelectorAll('li')].map(liElement => {
                 return {
-                  text: li.innerHTML.trim(),
-                  hsl: {
-                    h: li.hasAttribute('data-hue') ? Number(li.getAttribute('data-hue')) : 0,
-                    s: li.hasAttribute('data-saturation') ? Number(li.getAttribute('data-saturation')) : 100,
-                    l: li.hasAttribute('data-lightness') ? Number(li.getAttribute('data-lightness')) : 50
+                  text: liElement.innerHTML.trim(),
+                  hslColor: {
+                    h: liElement.hasAttribute('data-hue') ? Number(liElement.getAttribute('data-hue')) : 0,
+                    s: liElement.hasAttribute('data-saturation') ? Number(liElement.getAttribute('data-saturation')) : 100,
+                    l: liElement.hasAttribute('data-lightness') ? Number(liElement.getAttribute('data-lightness')) : 50
                   },
-                  role: li.getAttribute('data-role') || ''
+                  role: liElement.getAttribute('data-role') || ''
                 };
               })
             };
@@ -141,114 +141,137 @@
         }
 
         buildTextMask(texts) {
-          const mask = [];
+          const maskPixelData = [];
           const canvasWidth = 200;
           const canvasHeight = 150;
 
           const mainNameTexts = texts.filter(t => t.role === 'main-name');
           const sectionsTexts = texts.filter(t => t.role === 'sections');
 
-          const canvas = document.createElement('canvas');
-          const engine = canvas.getContext('2d');
-          canvas.setAttribute('width', canvasWidth);
-          canvas.setAttribute('height', canvasHeight);
+          const offscreenCanvas = document.createElement('canvas');
+          const offscreenContext = offscreenCanvas.getContext('2d');
+          offscreenCanvas.setAttribute('width', canvasWidth);
+          offscreenCanvas.setAttribute('height', canvasHeight);
 
-          const font = (size) => `bold ${size}px Arial`;
-          engine.fillStyle = '#000';
+          const getFontString = (size) => `bold ${size}px Arial`;
+          offscreenContext.fillStyle = '#000';
 
           if (mainNameTexts.length > 0) {
             const mainNameString = mainNameTexts.map(t => t.text).join('');
             const baseMainFontSize = 40;
-            engine.font = font(baseMainFontSize);
-            let mMain = engine.measureText(mainNameString);
-            let fSizeMain = Math.min(baseMainFontSize, (canvasWidth * 0.9 / mMain.width) * baseMainFontSize);
-            engine.font = font(fSizeMain);
-            mMain = engine.measureText(mainNameString);
-            const fontWidthMain = mMain.width;
-            const yMainName = (canvasHeight / 4) + (fSizeMain / 3);
-            let currentXMainName = (canvasWidth - fontWidthMain) / 2;
+            let mainFontString = getFontString(baseMainFontSize);
+            offscreenContext.font = mainFontString;
+            let mainTextMetrics = offscreenContext.measureText(mainNameString);
+
+            let mainFontSize = baseMainFontSize;
+            if (mainTextMetrics.width > canvasWidth * 0.9) {
+              mainFontSize = Math.min(baseMainFontSize, (canvasWidth * 0.9 / mainTextMetrics.width) * baseMainFontSize);
+            }
+            mainFontString = getFontString(mainFontSize);
+            offscreenContext.font = mainFontString;
+            // Re-measure with the potentially adjusted font size
+            mainTextMetrics = offscreenContext.measureText(mainNameString);
+            const fontWidthMain = mainTextMetrics.width;
+
+            const yMainName = (canvasHeight / 4) + (mainFontSize / 3);
+            let currentXPositionMain = (canvasWidth - fontWidthMain) / 2;
 
             mainNameTexts.forEach(textStack => {
-              engine.clearRect(0, 0, canvasWidth, canvasHeight);
-              engine.font = font(fSizeMain);
-              engine.fillText(textStack.text, currentXMainName, yMainName);
-              const textPartWidth = engine.measureText(textStack.text).width;
-              const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
-              const subStack = [];
-              for (let i = 0; i < data.data.length; i += 4) {
-                if (data.data[i + 3] > 0) {
+              offscreenContext.clearRect(0, 0, canvasWidth, canvasHeight);
+              // Font string is already set for mainFontSize if it didn't change
+              // or set to the new mainFontSize if it did.
+              offscreenContext.font = mainFontString; 
+              offscreenContext.fillText(textStack.text, currentXPositionMain, yMainName);
+              const textPartWidth = offscreenContext.measureText(textStack.text).width;
+              const imageData = offscreenContext.getImageData(0, 0, canvasWidth, canvasHeight);
+              const pixelCoordinates = [];
+              for (let i = 0; i < imageData.data.length; i += 4) {
+                if (imageData.data[i + 3] > 0) { // Check alpha channel
                   const pixelIndex = i / 4;
-                  subStack.push({
-                    x: (pixelIndex % canvasWidth) / canvasWidth,
-                    y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
-                    o: Math.random(),
-                    t: Math.random()
+                  pixelCoordinates.push({
+                    x: (pixelIndex % canvasWidth) / canvasWidth, // Normalized x
+                    y: Math.floor(pixelIndex / canvasWidth) / canvasHeight, // Normalized y
+                    initialOffset: Math.random(), // For static animation variation
+                    randomSeed: Math.random() // For static animation variation
                   });
                 }
               }
-              mask.push({ hsl: textStack.hsl, s: subStack });
-              currentXMainName += textPartWidth;
+              maskPixelData.push({ hslColor: textStack.hslColor, pixelCoordinates: pixelCoordinates });
+              currentXPositionMain += textPartWidth;
             });
           }
 
           if (sectionsTexts.length > 0) {
             const sectionsString = sectionsTexts.map(t => t.text).join('');
-            let fSizeMainVal = 30;
-            if (mainNameTexts.length > 0 && engine.font.includes("px")) {
-              const fontMatch = engine.font.match(/(\d+)px/);
+            let mainFontSizeValue = 30; // Default if mainNameTexts was empty or font not set
+            if (mainNameTexts.length > 0 && mainFontString.includes("px")) { // Use mainFontString here
+              const fontMatch = mainFontString.match(/(\d+)px/);
               if (fontMatch && fontMatch[1]) {
-                fSizeMainVal = parseFloat(fontMatch[1]);
+                mainFontSizeValue = parseFloat(fontMatch[1]);
               }
             }
-            const baseSectionsFontSize = fSizeMainVal * 0.6;
-            engine.font = font(baseSectionsFontSize);
-            let mSections = engine.measureText(sectionsString);
-            let fSizeSections = Math.min(baseSectionsFontSize, (canvasWidth * 0.9 / mSections.width) * baseSectionsFontSize);
-            fSizeSections = Math.max(fSizeSections, 1);
-            engine.font = font(fSizeSections);
-            const fontWidthSections = engine.measureText(sectionsString).width;
-            const ySections = (canvasHeight * 0.75) + (fSizeSections / 3);
-            let currentXSections = (canvasWidth - fontWidthSections) / 2;
+            const baseSectionsFontSize = mainFontSizeValue * 0.6;
+            let sectionsFontString = getFontString(baseSectionsFontSize);
+            offscreenContext.font = sectionsFontString;
+            let sectionsTextMetrics = offscreenContext.measureText(sectionsString);
+            
+            let sectionsFontSize = baseSectionsFontSize;
+            if (sectionsTextMetrics.width > canvasWidth * 0.9) {
+                sectionsFontSize = Math.min(baseSectionsFontSize, (canvasWidth * 0.9 / sectionsTextMetrics.width) * baseSectionsFontSize);
+            }
+            sectionsFontSize = Math.max(sectionsFontSize, 1); // Ensure font size is at least 1
+            sectionsFontString = getFontString(sectionsFontSize);
+            offscreenContext.font = sectionsFontString;
+            // Re-measure with the potentially adjusted font size
+            sectionsTextMetrics = offscreenContext.measureText(sectionsString);
+            const fontWidthSections = sectionsTextMetrics.width;
+
+            const ySections = (canvasHeight * 0.75) + (sectionsFontSize / 3);
+            let currentXPositionSections = (canvasWidth - fontWidthSections) / 2;
 
             sectionsTexts.forEach(textStack => {
-              engine.clearRect(0, 0, canvasWidth, canvasHeight);
-              engine.font = font(fSizeSections);
-              engine.fillText(textStack.text, currentXSections, ySections);
-              const textPartWidth = engine.measureText(textStack.text).width;
-              const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
-              const subStack = [];
-              for (let i = 0; i < data.data.length; i += 4) {
-                if (data.data[i + 3] > 0) {
+              offscreenContext.clearRect(0, 0, canvasWidth, canvasHeight);
+              offscreenContext.font = sectionsFontString; // Reuse sectionsFontString
+              offscreenContext.fillText(textStack.text, currentXPositionSections, ySections);
+              const textPartWidth = offscreenContext.measureText(textStack.text).width;
+              const imageData = offscreenContext.getImageData(0, 0, canvasWidth, canvasHeight);
+              const pixelCoordinates = [];
+              for (let i = 0; i < imageData.data.length; i += 4) {
+                if (imageData.data[i + 3] > 0) { // Check alpha channel
                   const pixelIndex = i / 4;
-                  subStack.push({
-                    x: (pixelIndex % canvasWidth) / canvasWidth,
-                    y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
-                    o: Math.random(),
-                    t: Math.random()
+                  pixelCoordinates.push({
+                    x: (pixelIndex % canvasWidth) / canvasWidth, // Normalized x
+                    y: Math.floor(pixelIndex / canvasWidth) / canvasHeight, // Normalized y
+                    initialOffset: Math.random(), // For static animation variation
+                    randomSeed: Math.random() // For static animation variation
                   });
                 }
               }
-              mask.push({ hsl: textStack.hsl, s: subStack });
-              currentXSections += textPartWidth;
+              maskPixelData.push({ hslColor: textStack.hslColor, pixelCoordinates: pixelCoordinates });
+              currentXPositionSections += textPartWidth;
             });
           }
-          return mask;
+          return maskPixelData;
         }
 
         createNewParticle() {
           for (let i = 0; i < newParticlesPerFrame; i++) {
-            let main = Math.random() * this.mask.length | 0;
-            let subMask = this.mask[main];
-            let maskElement = this.mask[main].s[Math.random() * this.mask[main].s.length | 0];
+            let maskGroupIndex = Math.random() * this.currentMask.length | 0;
+            let selectedMaskGroup = this.currentMask[maskGroupIndex];
+            // Ensure selectedMaskGroup and its pixelCoordinates are valid before proceeding
+            if (selectedMaskGroup && selectedMaskGroup.pixelCoordinates && selectedMaskGroup.pixelCoordinates.length > 0) {
+              let selectedMaskParticleInfo = selectedMaskGroup.pixelCoordinates[Math.random() * selectedMaskGroup.pixelCoordinates.length | 0];
 
-            if (subMask && maskElement) {
-              let particle = {
-                x: maskElement.x,
-                y: maskElement.y,
-                hsl: subMask.hsl,
-                c: this.prepareParticle
-              };
-              this.particleMap.set(particle, particle);
+              if (selectedMaskParticleInfo) {
+                let particle = {
+                  x: selectedMaskParticleInfo.x,
+                  y: selectedMaskParticleInfo.y,
+                  hslColor: selectedMaskGroup.hslColor,
+                  // Assigns the initial state function for the particle
+                  updateFunction: this.prepareParticle
+                };
+                this.particleMap.set(particle, particle);
+              }
             }
           }
         }
@@ -260,96 +283,113 @@
         }
 
         clear() {
-          this.engine.fillStyle = '#111';
-          this.engine.fillRect(0, 0, this.width, this.height);
+          this.renderingEngine.fillStyle = '#111';
+          this.renderingEngine.fillRect(0, 0, this.width, this.height);
         }
 
-        randFromList(...rands) {
-          return rands.reduce((acc, rand) => {
-            return acc + rand;
-          }, 0) / rands.length;
+        averageRandomValues(...randomValues) {
+          return randomValues.reduce((accumulator, currentValue) => {
+            return accumulator + currentValue;
+          }, 0) / randomValues.length;
         }
 
+        // Prepares a new particle's properties before its first draw.
+        // This function acts as the initial state in a state pattern for particles.
         prepareParticle(particle) {
-          const r1 = Math.random();
-          const r2 = Math.random();
-          const r3 = Math.random();
-          const rad = r3 * Math.PI * 2;
+          const randomFactor1 = Math.random();
+          const randomFactor2 = Math.random();
+          const randomFactor3 = Math.random();
+          const randomAngle = randomFactor3 * Math.PI * 2;
 
-          particle.x += (-0.5 + r1) / 300;
-          particle.y += (-0.5 + r2) / 300;
-          particle.si = 1 + Math.random() * 4 | 0;
-          particle.s = 0.003 + this.randFromList(r1, r2) / 10;
-          particle.l = 0;
-          particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
-          particle.my = Math.sin(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
-          particle.c = this.drawParticle;
+          particle.x += (-0.5 + randomFactor1) / 300;
+          particle.y += (-0.5 + randomFactor2) / 300;
+          particle.particleSize = 1 + Math.random() * 4 | 0;
+          particle.lifeIncrement = 0.003 + this.averageRandomValues(randomFactor1, randomFactor2) / 10;
+          particle.currentLife = 0; // Lifetime progress, 0 to 1
+          particle.velocityX = Math.cos(randomAngle) * (particle.lifeIncrement / (randomFactor1 < 0.05 ? 10 : 400));
+          particle.velocityY = Math.sin(randomAngle) * (particle.lifeIncrement / (randomFactor1 < 0.05 ? 10 : 400));
+          // Transitions particle to the drawing state
+          particle.updateFunction = this.drawParticle;
         }
 
+        // Draws a particle and updates its state for the next frame.
+        // This function acts as the subsequent state in a state pattern for particles.
         drawParticle(particle) {
-          if (particle.l >= 1) {
-            particle.c = null;
+          if (particle.currentLife >= 1) {
+            particle.updateFunction = null; // Mark for removal
             return;
           }
 
-          particle.l += particle.s;
-          particle.x += particle.mx;
-          particle.y += particle.my;
+          particle.currentLife += particle.lifeIncrement;
+          particle.x += particle.velocityX;
+          particle.y += particle.velocityY;
 
-          this.engine.fillStyle = color(particle.hsl, this.opa * Math.sin(particle.l * Math.PI));
-          this.engine.fillRect(particle.x * this.width, particle.y * this.height, particle.si, particle.si);
+          this.renderingEngine.fillStyle = formatHSLColor(particle.hslColor, this.currentOpacity * Math.sin(particle.currentLife * Math.PI));
+          this.renderingEngine.fillRect(particle.x * this.width, particle.y * this.height, particle.particleSize, particle.particleSize);
         }
 
         renderParticles() {
           this.particleMap.forEach((particle) => {
-            particle.c.call(this, particle);
-            if (!particle.c) {
+            // Calls the current state function (prepareParticle or drawParticle)
+            if (particle.updateFunction) {
+              particle.updateFunction.call(this, particle);
+            }
+            // Remove particle if its updateFunction is set to null (e.g., lifetime ended)
+            if (!particle.updateFunction) {
               this.particleMap.delete(particle);
             }
           });
         }
 
         drawStatic() {
-          let i = 0;
+          let counter = 0;
           const step = 0.01;
 
-          this.mask.forEach(subMask => {
-            subMask.s.forEach(pos => {
-              i++;
-              this.engine.fillStyle = color(subMask.hsl, (1 + Math.cos(pos.x * 5 * pos.y * 5 + this.tick / 10)) / 2 * this.opa * pos.t * 0.5);
-              this.engine.fillRect(
-                pos.x * this.width,
-                pos.y * this.height,
-                this.width / 150,
-                this.width / 150
+          const baseParticleSize = this.width / 150;
+          const arcRadiusBase = this.width / 500;
+          const paddingFactorBase = this.width / 200;
+
+
+          this.currentMask.forEach(maskGroup => {
+            maskGroup.pixelCoordinates.forEach(pixelPos => {
+              counter++;
+              const screenX = pixelPos.x * this.width;
+              const screenY = pixelPos.y * this.height;
+
+              this.renderingEngine.fillStyle = formatHSLColor(maskGroup.hslColor, (1 + Math.cos(pixelPos.x * 5 * pixelPos.y * 5 + this.animationTick / 10)) / 2 * this.currentOpacity * pixelPos.randomSeed * 0.5);
+              this.renderingEngine.fillRect(
+                screenX,
+                screenY,
+                baseParticleSize,
+                baseParticleSize
               );
 
-              if (i % 2) {
+              if (counter % 2) { // Skip half for performance/visual effect
                 return;
               }
 
-              pos.o += step;
-              const opa = Math.max(0, Math.sin(pos.o * Math.PI * 2));
-              const padding = opa * this.width / 200;
+              pixelPos.initialOffset += step; // Animate the static particles
+              const currentEffectOpacity = Math.max(0, Math.sin(pixelPos.initialOffset * Math.PI * 2));
+              const padding = currentEffectOpacity * paddingFactorBase;
 
-              this.engine.fillStyle = color(subMask.hsl, this.opa * opa * 0.2);
+              this.renderingEngine.fillStyle = formatHSLColor(maskGroup.hslColor, this.currentOpacity * currentEffectOpacity * 0.2);
 
-              if (pos.t < 0.5) {
-                this.engine.beginPath();
-                this.engine.arc(
-                  pos.x * this.width,
-                  pos.y * this.height,
-                  this.width / 500 + padding,
+              if (pixelPos.randomSeed < 0.5) { // Alternate visual effect
+                this.renderingEngine.beginPath();
+                this.renderingEngine.arc(
+                  screenX,
+                  screenY,
+                  arcRadiusBase + padding,
                   0,
                   Math.PI * 2
                 );
-                this.engine.fill();
+                this.renderingEngine.fill();
               } else {
-                this.engine.fillRect(
-                  pos.x * this.width - padding,
-                  pos.y * this.height - padding,
-                  this.width / 150 + padding * 2,
-                  this.width / 150 + padding * 2
+                this.renderingEngine.fillRect(
+                  screenX - padding,
+                  screenY - padding,
+                  baseParticleSize + padding * 2,
+                  baseParticleSize + padding * 2
                 );
               }
             });
@@ -357,80 +397,81 @@
         }
 
         draw() {
-          this.tick++;
-          this.nextMaskCb();
+          this.animationTick++;
+          this.nextMaskCallback();
           this.createNewParticle();
           this.clear();
-          this.engine.globalCompositeOperation = 'lighter';
+          this.renderingEngine.globalCompositeOperation = 'lighter';
           this.drawStatic();
           this.renderParticles();
-          this.engine.globalCompositeOperation = 'source-over';
-          requestAnimationFrame(this.drawCB);
+          this.renderingEngine.globalCompositeOperation = 'source-over';
+          requestAnimationFrame(this.drawCallback);
         }
 
         fadeInMask() {
-          this.opa += this.stack[this.stackId].fadeIn;
-          if (this.opa >= 1) {
-            this.opa = 1;
+          this.currentOpacity += this.textAnimationStack[this.currentStackId].fadeInSpeed;
+          if (this.currentOpacity >= 1) {
+            this.currentOpacity = 1;
             this.afterFadeIn();
           }
         }
 
         afterFadeIn() {
-          this.opa = 1;
-          if (this.stack[this.stackId].ticks) {
+          this.currentOpacity = 1;
+          if (this.textAnimationStack[this.currentStackId].durationTicks) {
             this.maskTick = 0;
-            this.nextMaskCb = this.tickMask.bind(this);
+            this.nextMaskCallback = this.tickMask.bind(this);
           } else {
-            this.nextMaskCb = () => {};
+            this.nextMaskCallback = () => {}; // No duration, stay on this mask
           }
         }
 
         fadeOutMask() {
-          this.opa -= this.stack[this.stackId].fadeOut;
-          if (this.opa <= 0) {
+          this.currentOpacity -= this.textAnimationStack[this.currentStackId].fadeOutSpeed;
+          if (this.currentOpacity <= 0) {
             this.afterFadeOut();
           }
         }
 
         afterFadeOut() {
-          this.opa = 0;
-          this.nextMaskCb = this.nextMask.bind(this);
+          this.currentOpacity = 0;
+          this.nextMaskCallback = this.nextMask.bind(this); // Proceed to next mask
         }
 
         tickMask() {
           this.maskTick++;
-          if (this.maskTick >= this.stack[this.stackId].ticks) {
-            if (this.stack[this.stackId].fadeOut) {
-              this.nextMaskCb = this.fadeOutMask.bind(this);
+          if (this.maskTick >= this.textAnimationStack[this.currentStackId].durationTicks) {
+            if (this.textAnimationStack[this.currentStackId].fadeOutSpeed) {
+              this.nextMaskCallback = this.fadeOutMask.bind(this);
             } else {
-              this.afterFadeOut();
+              this.afterFadeOut(); // If no fadeOutSpeed, directly go to afterFadeOut
             }
           }
         }
 
         nextMask() {
-          this.stackId++;
-          if (this.stackId >= this.stack.length) {
-            this.stackId = 0;
+          this.currentStackId++;
+          if (this.currentStackId >= this.textAnimationStack.length) {
+            this.currentStackId = 0; // Loop back to the first mask
           }
-          this.mask = this.maskCache[this.stackId];
-          if (this.stack[this.stackId].fadeIn) {
-            this.nextMaskCb = this.fadeInMask.bind(this);
+          this.currentMask = this.maskCache[this.currentStackId];
+          if (this.textAnimationStack[this.currentStackId].fadeInSpeed) {
+            this.nextMaskCallback = this.fadeInMask.bind(this);
           } else {
-            this.opa = 1;
+            // No fadeInSpeed, directly set opacity to 1 and call afterFadeIn
+            this.currentOpacity = 1;
             this.afterFadeIn();
           }
         }
 
         run() {
-          this.drawCB = this.draw.bind(this);
-          this.drawCB();
+          this.drawCallback = this.draw.bind(this);
+          this.drawCallback();
         }
       }
 
-      const a = new TextSparks();
-      a.run();
+      const textSparksApp = new TextSparks();
+      textSparksApp.run();
     </script>
   </body>
 </html>
