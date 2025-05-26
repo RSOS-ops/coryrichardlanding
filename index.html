@@ -73,7 +73,9 @@
       </ul>
     </div>
     <canvas></canvas>
+    <!-- TODO: This 'Coming Soon' message is currently hidden. Implement logic to display it when appropriate (e.g., after text animation, or remove if not needed). -->
     <h1>Coming Soon</h1>
+    <!-- TODO: This 'sections-container' is currently hidden. It's populated with static section names. Implement logic to display it when appropriate, potentially synchronizing with or following the 'TextSparks' animation, or remove if not needed. The 'TextSparks' animation also processes 'sections' roles from the UL list. Clarify if this static container is a fallback, an alternative, or for a future state. -->
     <div id="sections-container" style="display: none;">
       <div class="section">DJ</div>
       <div class="section">Music</div>
@@ -81,50 +83,175 @@
       <div class="section">Tech</div>
     </div>
     <script>
-      const newParticlesPerFrame = 50;
+      // Controls the density/number of new particles generated each frame.
+      // Reduced from 50 to 25 for improved performance.
+      const newParticlesPerFrame = 25;
+
+      // Configuration constants
+      // Speed adjustments (total factor of 6x slower: 3 * 2) are now baked directly into these values.
+      const PARTICLE_CONFIG = {
+        TICKS_MULTIPLIER: 0.3, // Adjusted: 0.05 * 3 * 2
+        FADE_SPEED_DIVISOR: 8.333333333333334, // Adjusted: 50 / 3 / 2
+        DEFAULT_HUE: 0,
+        DEFAULT_SATURATION: 100,
+        DEFAULT_LIGHTNESS: 50
+      };
+
+      const MASK_CANVAS_CONFIG = {
+        WIDTH: 160, // Reduced from 200 for performance
+        HEIGHT: 120, // Reduced from 150 for performance
+        FONT_STYLE_TEMPLATE: (size) => `bold ${size}px Arial`,
+        FILL_STYLE: '#000', // Used for offscreen canvas text rendering
+        IMAGE_DATA_ALPHA_THRESHOLD: 0, // For checking if a pixel is part of the text
+        PIXEL_DATA_STRIDE: 4, // RGBA
+        TEXT_ALIGN: 'left',
+        TEXT_BASELINE: 'alphabetic'
+      };
+
+      const MAIN_FONT_CONFIG = {
+        BASE_SIZE: 40,
+        Y_RATIO: 0.25, // canvasHeight / 4
+        SIZE_Y_OFFSET_RATIO: 0.3333, // fSizeMain / 3 (approx 1/3)
+        WIDTH_SCALE_FACTOR: 0.9 // Factor to scale text width against canvas width
+      };
+
+      const SECTIONS_FONT_CONFIG = {
+        DEFAULT_MAIN_FONT_SIZE_FALLBACK: 30,
+        BASE_SIZE_RATIO: 0.6, // Relative to main font size
+        Y_RATIO: 0.75, // canvasHeight * 0.75
+        MIN_FONT_SIZE: 1
+      };
+
+      // Multiplier to increase the resolution of the temporary canvas for "sections" text,
+      // leading to a denser particle mask for these specific texts.
+      const SECTIONS_DENSITY_MULTIPLIER = 1.33;
+
+      const PARTICLE_PHYSICS = {
+        POSITION_ADJUST_DIVISOR: 300,
+        BASE_LIFESPAN_INCREMENT: 0.0005, // Adjusted: 0.003 / 3 / 2
+        RANDOM_LIFESPAN_DIVISOR: 60, // Adjusted: 10 * 3 * 2
+        MAX_SIZE_RANDOM_FACTOR: 4,
+        SLOW_SPEED_DIVISOR: 400,
+        FAST_SPEED_DIVISOR: 10,
+        FAST_CHANCE_THRESHOLD: 0.05, // Chance for particle to get a fast speed boost
+        MIN_PARTICLE_SIZE: 1
+      };
+
+      const STATIC_DRAW_CONFIG = {
+        TICK_EFFECT_DIVISOR: 60, // Adjusted: 10 * 3 * 2
+        PRIMARY_OPACITY_T_FACTOR: 0.5,
+        SECONDARY_EFFECT_STEP: 0.0016666666666666668, // Adjusted: 0.01 / 3 / 2
+        SECONDARY_PADDING_DIVISOR_WIDTH_RATIO: 200,
+        SECONDARY_OPACITY_FACTOR: 0.2,
+        ALTERNATE_RENDERING_MODULO: 2,
+        T_THRESHOLD_FOR_ARC: 0.5, // pos.t < 0.5 determines circle vs square
+        BASE_PARTICLE_SIZE_DIVISOR: 150,
+        ARC_PARTICLE_SIZE_DIVISOR: 500
+      };
+
+      const ENGINE_CONFIG = {
+        CLEAR_COLOR: '#111',
+        GLOBAL_COMPOSITE_OPERATION_LIGHTER: 'lighter',
+        GLOBAL_COMPOSITE_OPERATION_SOURCE_OVER: 'source-over',
+        OFFSCREEN_FILL_STYLE: '#000' // Fill style for text on offscreen canvas
+      };
+
 
       const color = (hsl, o) => {
         return `hsla(${hsl.h | 0}, ${hsl.s}%, ${hsl.l}%, ${o})`;
       };
 
+      /**
+       * TextSparks class manages the animation of text revealing as sparkling particles.
+       * It handles fetching text data from HTML, rendering text to offscreen canvases
+       * to create pixel masks, and then animating particles based on these masks.
+       */
       class TextSparks {
         constructor() {
+          // Overall opacity for the current mask, used for fade effects.
           this.opa = 0;
+          // General ticker, primarily used for animation effects in drawStatic.
           this.tick = 0;
-          this.drawCB = null;
-          this.mask = null;
+          this.drawCB = null; // Callback for requestAnimationFrame, bound to this.draw.
+          this.mask = null; // Holds the currently active text mask (particle positions).
+          this.currentMaskData = null; // Holds the full data object for the current mask (particleMask + staticSections)
           this.canvas = window.document.querySelector('canvas');
           this.engine = this.canvas.getContext('2d');
-          this.maskTick = 0;
+          this.maskTick = 0; // Counter for the duration a mask stays visible.
+          // Callback for the current state in the mask display lifecycle (state machine).
           this.nextMaskCb = this.nextMask.bind(this);
+          // Stores pre-rendered text masks for quick swapping and animation.
           this.maskCache = [];
+          // Holds all active particles currently being animated. Using a Set for efficient add/delete.
+          this.particleMap = new Set();
 
           this.resize();
           this.fetchData();
           this.buildStackCache();
-          this.particleMap = new Map();
         }
 
+        /**
+         * Renders the static "sections" text directly onto the main canvas.
+         * This text serves as a background and is rendered with opacity,
+         * scaled proportionally to the main canvas dimensions.
+         */
+        drawStaticSectionsBackground() {
+          if (!this.currentMaskData || !this.currentMaskData.staticSections || this.currentMaskData.staticSections.length === 0) {
+            return;
+          }
+          
+          this.engine.textAlign = MASK_CANVAS_CONFIG.TEXT_ALIGN;
+          this.engine.textBaseline = MASK_CANVAS_CONFIG.TEXT_BASELINE;
+
+          this.currentMaskData.staticSections.forEach(sectionData => {
+            // Scale font size proportionally to the main canvas width
+            const scaledFontSize = (sectionData.sourceFontSize / sectionData.sourceCanvasWidth) * this.width;
+            
+            this.engine.font = MASK_CANVAS_CONFIG.FONT_STYLE_TEMPLATE(scaledFontSize); 
+
+            // Set fill style with 60% opacity
+            this.engine.fillStyle = color(sectionData.hsl, 0.6 * this.opa); // Multiply by global this.opa for fade effects
+
+            // Scale positions proportionally to the main canvas dimensions
+            const mainCanvasX = (sectionData.sourceX / sectionData.sourceCanvasWidth) * this.width;
+            const mainCanvasY = (sectionData.sourceY / sectionData.sourceCanvasHeight) * this.height;
+
+            // Draw text
+            this.engine.fillText(sectionData.text, mainCanvasX, mainCanvasY);
+          });
+        }
+
+        /**
+         * Pre-renders all text masks defined in the HTML.
+         * This is done upfront to ensure smooth transitions between different texts,
+         * as the mask generation can be performance-intensive.
+         */
         buildStackCache() {
           this.maskCache = this.stack.map((stack) => {
             return this.buildTextMask(stack.texts);
           });
         }
 
+        /**
+         * Extracts text content, animation timings (duration, fade-in/out),
+         * and color information (hue, saturation, lightness) from HTML `<ul>` and `<li>` elements.
+         * Each `<ul>` represents a "stack" or a sequence of texts to display.
+         */
         fetchData() {
-          this.stackId = -1;
+          this.stackId = -1; // Index of the currently active text stack.
+          // Processes each <ul> found in the first <div> of the body.
           this.stack = [...document.querySelectorAll('div > ul')].map(ul => {
             return {
-              ticks: 0.05 * (ul.hasAttribute('data-time') ? ul.getAttribute('data-time') : 0),
-              fadeIn: ul.hasAttribute('data-fade-in') ? 50 / Number(ul.getAttribute('data-fade-in')) : 0,
-              fadeOut: ul.hasAttribute('data-fade-out') ? 50 / Number(ul.getAttribute('data-fade-out')) : 0,
+              ticks: PARTICLE_CONFIG.TICKS_MULTIPLIER * (ul.hasAttribute('data-time') ? ul.getAttribute('data-time') : 0),
+              fadeIn: ul.hasAttribute('data-fade-in') ? (PARTICLE_CONFIG.FADE_SPEED_DIVISOR / Number(ul.getAttribute('data-fade-in'))) : 0,
+              fadeOut: ul.hasAttribute('data-fade-out') ? (PARTICLE_CONFIG.FADE_SPEED_DIVISOR / Number(ul.getAttribute('data-fade-out'))) : 0,
               texts: [...ul.querySelectorAll('li')].map(li => {
                 return {
                   text: li.innerHTML.trim(),
                   hsl: {
-                    h: li.hasAttribute('data-hue') ? Number(li.getAttribute('data-hue')) : 0,
-                    s: li.hasAttribute('data-saturation') ? Number(li.getAttribute('data-saturation')) : 100,
-                    l: li.hasAttribute('data-lightness') ? Number(li.getAttribute('data-lightness')) : 50
+                    h: li.hasAttribute('data-hue') ? Number(li.getAttribute('data-hue')) : PARTICLE_CONFIG.DEFAULT_HUE,
+                    s: li.hasAttribute('data-saturation') ? Number(li.getAttribute('data-saturation')) : PARTICLE_CONFIG.DEFAULT_SATURATION,
+                    l: li.hasAttribute('data-lightness') ? Number(li.getAttribute('data-lightness')) : PARTICLE_CONFIG.DEFAULT_LIGHTNESS
                   },
                   role: li.getAttribute('data-role') || ''
                 };
@@ -140,127 +267,172 @@
           this.canvas.setAttribute('height', this.height);
         }
 
+        /**
+         * Converts an array of text objects into a "mask" - a collection of points
+         * representing the pixels of the rendered text. This mask is then used to
+         * position particles.
+         * An offscreen canvas is used for rendering the text and extracting pixel data
+         * without affecting the visible display. This allows for precise pixel manipulation.
+         */
         buildTextMask(texts) {
           const mask = [];
-          const canvasWidth = 200;
-          const canvasHeight = 150;
+          let staticSectionsData = []; 
+          const mainCanvasWidth = MASK_CANVAS_CONFIG.WIDTH;
+          const mainCanvasHeight = MASK_CANVAS_CONFIG.HEIGHT;
 
           const mainNameTexts = texts.filter(t => t.role === 'main-name');
           const sectionsTexts = texts.filter(t => t.role === 'sections');
 
-          const canvas = document.createElement('canvas');
-          const engine = canvas.getContext('2d');
-          canvas.setAttribute('width', canvasWidth);
-          canvas.setAttribute('height', canvasHeight);
+          // Main offscreen canvas for 'main-name' and initial font measurements
+          const mainOffscreenCanvas = document.createElement('canvas');
+          const mainOffscreenEngine = mainOffscreenCanvas.getContext('2d');
+          mainOffscreenCanvas.setAttribute('width', mainCanvasWidth);
+          mainOffscreenCanvas.setAttribute('height', mainCanvasHeight);
 
-          const font = (size) => `bold ${size}px Arial`;
-          engine.fillStyle = '#000';
+          const fontTemplate = MASK_CANVAS_CONFIG.FONT_STYLE_TEMPLATE;
+          mainOffscreenEngine.fillStyle = ENGINE_CONFIG.OFFSCREEN_FILL_STYLE;
+          mainOffscreenEngine.textAlign = MASK_CANVAS_CONFIG.TEXT_ALIGN;
+          mainOffscreenEngine.textBaseline = MASK_CANVAS_CONFIG.TEXT_BASELINE;
+
+          let fSizeMainVal = SECTIONS_FONT_CONFIG.DEFAULT_MAIN_FONT_SIZE_FALLBACK; // Default if no mainNameTexts
 
           if (mainNameTexts.length > 0) {
             const mainNameString = mainNameTexts.map(t => t.text).join('');
-            const baseMainFontSize = 40;
-            engine.font = font(baseMainFontSize);
-            let mMain = engine.measureText(mainNameString);
-            let fSizeMain = Math.min(baseMainFontSize, (canvasWidth * 0.9 / mMain.width) * baseMainFontSize);
-            engine.font = font(fSizeMain);
-            mMain = engine.measureText(mainNameString);
+            const baseMainFontSize = MAIN_FONT_CONFIG.BASE_SIZE;
+            mainOffscreenEngine.font = fontTemplate(baseMainFontSize);
+            let mMain = mainOffscreenEngine.measureText(mainNameString);
+            let fSizeMain = Math.min(baseMainFontSize, (mainCanvasWidth * MAIN_FONT_CONFIG.WIDTH_SCALE_FACTOR / mMain.width) * baseMainFontSize);
+            mainOffscreenEngine.font = fontTemplate(fSizeMain);
+            mMain = mainOffscreenEngine.measureText(mainNameString);
             const fontWidthMain = mMain.width;
-            const yMainName = (canvasHeight / 4) + (fSizeMain / 3);
-            let currentXMainName = (canvasWidth - fontWidthMain) / 2;
+            const yMainName = (mainCanvasHeight * MAIN_FONT_CONFIG.Y_RATIO) + (fSizeMain * MAIN_FONT_CONFIG.SIZE_Y_OFFSET_RATIO);
+            let currentXMainName = (mainCanvasWidth - fontWidthMain) / 2;
+            
+            fSizeMainVal = fSizeMain; // Store for sections base font size calculation
 
             mainNameTexts.forEach(textStack => {
-              engine.clearRect(0, 0, canvasWidth, canvasHeight);
-              engine.font = font(fSizeMain);
-              engine.fillText(textStack.text, currentXMainName, yMainName);
-              const textPartWidth = engine.measureText(textStack.text).width;
-              const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+              mainOffscreenEngine.clearRect(0, 0, mainCanvasWidth, mainCanvasHeight);
+              mainOffscreenEngine.font = fontTemplate(fSizeMain);
+              mainOffscreenEngine.fillText(textStack.text, currentXMainName, yMainName);
+              const textPartWidth = mainOffscreenEngine.measureText(textStack.text).width;
+              const data = mainOffscreenEngine.getImageData(0, 0, mainCanvasWidth, mainCanvasHeight);
               const subStack = [];
-              for (let i = 0; i < data.data.length; i += 4) {
-                if (data.data[i + 3] > 0) {
-                  const pixelIndex = i / 4;
+              for (let i = 0; i < data.data.length; i += MASK_CANVAS_CONFIG.PIXEL_DATA_STRIDE) {
+                if (data.data[i + 3] > MASK_CANVAS_CONFIG.IMAGE_DATA_ALPHA_THRESHOLD) {
+                  const pixelIndex = i / MASK_CANVAS_CONFIG.PIXEL_DATA_STRIDE;
+                  const x = (pixelIndex % mainCanvasWidth) / mainCanvasWidth;
+                  const y = Math.floor(pixelIndex / mainCanvasWidth) / mainCanvasHeight;
                   subStack.push({
-                    x: (pixelIndex % canvasWidth) / canvasWidth,
-                    y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
+                    x: x,
+                    y: y,
+                    xy_factor: x * 5 * y * 5, 
                     o: Math.random(),
                     t: Math.random()
                   });
                 }
               }
-              mask.push({ hsl: textStack.hsl, s: subStack });
+              mask.push({ hsl: textStack.hsl, s: subStack, role: textStack.role });
               currentXMainName += textPartWidth;
             });
           }
 
           if (sectionsTexts.length > 0) {
+            const sectionsCanvas = document.createElement('canvas');
+            const sectionsEngine = sectionsCanvas.getContext('2d');
+            const sectionsCanvasWidth = MASK_CANVAS_CONFIG.WIDTH * SECTIONS_DENSITY_MULTIPLIER;
+            const sectionsCanvasHeight = MASK_CANVAS_CONFIG.HEIGHT * SECTIONS_DENSITY_MULTIPLIER;
+            sectionsCanvas.setAttribute('width', sectionsCanvasWidth);
+            sectionsCanvas.setAttribute('height', sectionsCanvasHeight);
+            
+            sectionsEngine.fillStyle = ENGINE_CONFIG.OFFSCREEN_FILL_STYLE;
+            sectionsEngine.textAlign = MASK_CANVAS_CONFIG.TEXT_ALIGN;
+            sectionsEngine.textBaseline = MASK_CANVAS_CONFIG.TEXT_BASELINE;
+
             const sectionsString = sectionsTexts.map(t => t.text).join('');
-            let fSizeMainVal = 30;
-            if (mainNameTexts.length > 0 && engine.font.includes("px")) {
-              const fontMatch = engine.font.match(/(\d+)px/);
-              if (fontMatch && fontMatch[1]) {
-                fSizeMainVal = parseFloat(fontMatch[1]);
-              }
-            }
-            const baseSectionsFontSize = fSizeMainVal * 0.6;
-            engine.font = font(baseSectionsFontSize);
-            let mSections = engine.measureText(sectionsString);
-            let fSizeSections = Math.min(baseSectionsFontSize, (canvasWidth * 0.9 / mSections.width) * baseSectionsFontSize);
-            fSizeSections = Math.max(fSizeSections, 1);
-            engine.font = font(fSizeSections);
-            const fontWidthSections = engine.measureText(sectionsString).width;
-            const ySections = (canvasHeight * 0.75) + (fSizeSections / 3);
-            let currentXSections = (canvasWidth - fontWidthSections) / 2;
+            const baseSectionsFontSize = fSizeMainVal * SECTIONS_FONT_CONFIG.BASE_SIZE_RATIO * SECTIONS_DENSITY_MULTIPLIER; // Scale base by density for larger canvas
+            
+            sectionsEngine.font = fontTemplate(baseSectionsFontSize);
+            let mSections = sectionsEngine.measureText(sectionsString);
+            let fSizeSections = Math.min(baseSectionsFontSize, (sectionsCanvasWidth * MAIN_FONT_CONFIG.WIDTH_SCALE_FACTOR / mSections.width) * baseSectionsFontSize);
+            fSizeSections = Math.max(fSizeSections, SECTIONS_FONT_CONFIG.MIN_FONT_SIZE * SECTIONS_DENSITY_MULTIPLIER); // Ensure min font size is also scaled
+
+            sectionsEngine.font = fontTemplate(fSizeSections);
+            const fontWidthSections = sectionsEngine.measureText(sectionsString).width;
+            const ySections = (sectionsCanvasHeight * SECTIONS_FONT_CONFIG.Y_RATIO) + (fSizeSections * MAIN_FONT_CONFIG.SIZE_Y_OFFSET_RATIO);
+            let currentXSections = (sectionsCanvasWidth - fontWidthSections) / 2;
 
             sectionsTexts.forEach(textStack => {
-              engine.clearRect(0, 0, canvasWidth, canvasHeight);
-              engine.font = font(fSizeSections);
-              engine.fillText(textStack.text, currentXSections, ySections);
-              const textPartWidth = engine.measureText(textStack.text).width;
-              const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+              sectionsEngine.clearRect(0, 0, sectionsCanvasWidth, sectionsCanvasHeight);
+              sectionsEngine.font = fontTemplate(fSizeSections);
+              sectionsEngine.fillText(textStack.text, currentXSections, ySections);
+
+              staticSectionsData.push({
+                text: textStack.text,
+                hsl: textStack.hsl,
+                sourceX: currentXSections,
+                sourceY: ySections,
+                sourceFontSize: fSizeSections, // This is the size used on the sectionsCanvas
+                sourceCanvasWidth: sectionsCanvasWidth,
+                sourceCanvasHeight: sectionsCanvasHeight
+              });
+
+              const textPartWidth = sectionsEngine.measureText(textStack.text).width;
+              const data = sectionsEngine.getImageData(0, 0, sectionsCanvasWidth, sectionsCanvasHeight);
               const subStack = [];
-              for (let i = 0; i < data.data.length; i += 4) {
-                if (data.data[i + 3] > 0) {
-                  const pixelIndex = i / 4;
+              for (let i = 0; i < data.data.length; i += MASK_CANVAS_CONFIG.PIXEL_DATA_STRIDE) {
+                if (data.data[i + 3] > MASK_CANVAS_CONFIG.IMAGE_DATA_ALPHA_THRESHOLD) {
+                  const pixelIndex = i / MASK_CANVAS_CONFIG.PIXEL_DATA_STRIDE;
+                  const x = (pixelIndex % sectionsCanvasWidth) / sectionsCanvasWidth;
+                  const y = Math.floor(pixelIndex / sectionsCanvasWidth) / sectionsCanvasHeight;
                   subStack.push({
-                    x: (pixelIndex % canvasWidth) / canvasWidth,
-                    y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
+                    x: x,
+                    y: y,
+                    xy_factor: x * 5 * y * 5,
                     o: Math.random(),
                     t: Math.random()
                   });
                 }
               }
-              mask.push({ hsl: textStack.hsl, s: subStack });
+              mask.push({ hsl: textStack.hsl, s: subStack, role: textStack.role });
               currentXSections += textPartWidth;
             });
           }
-          return mask;
+          return { particleMask: mask, staticSections: staticSectionsData };
         }
 
         createNewParticle() {
+          // Ensure this.mask (particleMask) is valid before proceeding
+          if (!this.mask || this.mask.length === 0) {
+            return; 
+          }
           for (let i = 0; i < newParticlesPerFrame; i++) {
             let main = Math.random() * this.mask.length | 0;
             let subMask = this.mask[main];
-            let maskElement = this.mask[main].s[Math.random() * this.mask[main].s.length | 0];
 
-            if (subMask && maskElement) {
+            if (!subMask || !subMask.s || subMask.s.length === 0) {
+              continue; 
+            }
+
+            let maskElement = subMask.s[Math.random() * subMask.s.length | 0];
+
+            if (subMask && maskElement) { 
               let particle = {
                 x: maskElement.x,
                 y: maskElement.y,
                 hsl: subMask.hsl,
                 c: this.prepareParticle
               };
-              this.particleMap.set(particle, particle);
+              this.particleMap.add(particle);
             }
           }
         }
 
-        secLog(log, timesPerFrame) {
-          if (Math.random() < 1 / 60 / timesPerFrame) {
-            console.log(log);
-          }
-        }
-
         clear() {
-          this.engine.fillStyle = '#111';
+          // Clears the canvas to a specific background color (ENGINE_CONFIG.CLEAR_COLOR).
+          // Using fillRect is a standard way to achieve this.
+          // clearRect() could also be used if a transparent black background is desired,
+          // but fillRect provides explicit color control for the canvas background.
+          this.engine.fillStyle = ENGINE_CONFIG.CLEAR_COLOR;
           this.engine.fillRect(0, 0, this.width, this.height);
         }
 
@@ -270,34 +442,51 @@
           }, 0) / rands.length;
         }
 
+        /**
+         * Initializes a particle's properties before its first draw.
+         * This includes its initial slight positional adjustments, size, lifespan increment (s),
+         * and movement vector (mx, my). Random numbers are used extensively here to give
+         * each particle a unique behavior and appearance (e.g. speed, direction, initial jitter).
+         */
         prepareParticle(particle) {
-          const r1 = Math.random();
-          const r2 = Math.random();
-          const r3 = Math.random();
+          const r1 = Math.random(); // Used for various random factors.
+          const r2 = Math.random(); // Used for various random factors.
+          const r3 = Math.random(); // Used for randomizing radian angle.
           const rad = r3 * Math.PI * 2;
 
-          particle.x += (-0.5 + r1) / 300;
-          particle.y += (-0.5 + r2) / 300;
-          particle.si = 1 + Math.random() * 4 | 0;
-          particle.s = 0.003 + this.randFromList(r1, r2) / 10;
+          particle.x += (-0.5 + r1) / PARTICLE_PHYSICS.POSITION_ADJUST_DIVISOR;
+          particle.y += (-0.5 + r2) / PARTICLE_PHYSICS.POSITION_ADJUST_DIVISOR;
+          particle.size = PARTICLE_PHYSICS.MIN_PARTICLE_SIZE + Math.random() * PARTICLE_PHYSICS.MAX_SIZE_RANDOM_FACTOR | 0;
+          particle.s = PARTICLE_PHYSICS.BASE_LIFESPAN_INCREMENT + this.randFromList(r1, r2) / PARTICLE_PHYSICS.RANDOM_LIFESPAN_DIVISOR;
           particle.l = 0;
-          particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
-          particle.my = Math.sin(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
-          particle.c = this.drawParticle;
+          const speedDivisor = r1 < PARTICLE_PHYSICS.FAST_CHANCE_THRESHOLD ? PARTICLE_PHYSICS.FAST_SPEED_DIVISOR : PARTICLE_PHYSICS.SLOW_SPEED_DIVISOR;
+          particle.mx = Math.cos(rad) * (particle.s / speedDivisor);
+          particle.my = Math.sin(rad) * (particle.s / speedDivisor);
+          particle.c = this.drawParticle; // Set the particle's draw function.
         }
 
+        /**
+         * Updates a particle's state and draws it on the main canvas.
+         * Each call progresses the particle's "life" (particle.l).
+         * When particle.l >= 1, the particle is considered "dead" and will be removed.
+         * Position is updated based on its movement vector (mx, my).
+         * Opacity is tied to its life and the overall mask opacity (this.opa),
+         * creating a fade-in/out effect for the particle itself.
+         */
         drawParticle(particle) {
+          // If particle's life is over, mark it for removal.
           if (particle.l >= 1) {
-            particle.c = null;
+            particle.c = null; // Setting 'c' to null flags it for deletion in renderParticles.
             return;
           }
 
-          particle.l += particle.s;
-          particle.x += particle.mx;
+          particle.l += particle.s; // Increment life.
+          particle.x += particle.mx; // Update position.
           particle.y += particle.my;
 
+          // Draw the particle. Opacity uses a sine wave based on life for a pulsing effect.
           this.engine.fillStyle = color(particle.hsl, this.opa * Math.sin(particle.l * Math.PI));
-          this.engine.fillRect(particle.x * this.width, particle.y * this.height, particle.si, particle.si);
+          this.engine.fillRect(particle.x * this.width, particle.y * this.height, particle.size, particle.size);
         }
 
         renderParticles() {
@@ -311,35 +500,42 @@
 
         drawStatic() {
           let i = 0;
-          const step = 0.01;
+          const step = STATIC_DRAW_CONFIG.SECONDARY_EFFECT_STEP;
+          // Calculate particle sizes once per frame
+          const baseParticleSize = this.width / STATIC_DRAW_CONFIG.BASE_PARTICLE_SIZE_DIVISOR;
+          const arcParticleBaseSize = this.width / STATIC_DRAW_CONFIG.ARC_PARTICLE_SIZE_DIVISOR;
 
-          this.mask.forEach(subMask => {
+          // Filter out particles with the 'sections' role
+          const maskToRender = this.mask.filter(subMask => subMask.role !== 'sections');
+
+          maskToRender.forEach(subMask => {
             subMask.s.forEach(pos => {
               i++;
-              this.engine.fillStyle = color(subMask.hsl, (1 + Math.cos(pos.x * 5 * pos.y * 5 + this.tick / 10)) / 2 * this.opa * pos.t * 0.5);
+              // Use pre-calculated pos.xy_factor
+              this.engine.fillStyle = color(subMask.hsl, (1 + Math.cos(pos.xy_factor + this.tick / STATIC_DRAW_CONFIG.TICK_EFFECT_DIVISOR)) / 2 * this.opa * pos.t * STATIC_DRAW_CONFIG.PRIMARY_OPACITY_T_FACTOR);
               this.engine.fillRect(
                 pos.x * this.width,
                 pos.y * this.height,
-                this.width / 150,
-                this.width / 150
+                baseParticleSize,
+                baseParticleSize
               );
 
-              if (i % 2) {
+              if (i % STATIC_DRAW_CONFIG.ALTERNATE_RENDERING_MODULO) {
                 return;
               }
 
               pos.o += step;
               const opa = Math.max(0, Math.sin(pos.o * Math.PI * 2));
-              const padding = opa * this.width / 200;
+              const padding = opa * this.width / STATIC_DRAW_CONFIG.SECONDARY_PADDING_DIVISOR_WIDTH_RATIO;
 
-              this.engine.fillStyle = color(subMask.hsl, this.opa * opa * 0.2);
+              this.engine.fillStyle = color(subMask.hsl, this.opa * opa * STATIC_DRAW_CONFIG.SECONDARY_OPACITY_FACTOR);
 
-              if (pos.t < 0.5) {
+              if (pos.t < STATIC_DRAW_CONFIG.T_THRESHOLD_FOR_ARC) {
                 this.engine.beginPath();
                 this.engine.arc(
                   pos.x * this.width,
                   pos.y * this.height,
-                  this.width / 500 + padding,
+                  arcParticleBaseSize + padding, // Use arcParticleBaseSize
                   0,
                   Math.PI * 2
                 );
@@ -348,28 +544,61 @@
                 this.engine.fillRect(
                   pos.x * this.width - padding,
                   pos.y * this.height - padding,
-                  this.width / 150 + padding * 2,
-                  this.width / 150 + padding * 2
+                  baseParticleSize + padding * 2, // Use baseParticleSize
+                  baseParticleSize + padding * 2  // Use baseParticleSize
                 );
               }
             });
           });
         }
 
+        /**
+         * Main animation loop, called with requestAnimationFrame.
+         * Key steps:
+         * 1. Advances the mask display state (this.nextMaskCb()).
+         * 2. Creates new particles for the current frame (this.createNewParticle()).
+         * 3. Clears the canvas (this.clear()).
+         * 4. Sets 'lighter' compositing for additive blending of particles.
+         * 5. Draws static background elements/effects (this.drawStatic()).
+         * 6. Renders all active particles (this.renderParticles()).
+         * 7. Resets compositing mode and requests the next frame.
+         */
         draw() {
-          this.tick++;
-          this.nextMaskCb();
-          this.createNewParticle();
-          this.clear();
-          this.engine.globalCompositeOperation = 'lighter';
-          this.drawStatic();
-          this.renderParticles();
-          this.engine.globalCompositeOperation = 'source-over';
-          requestAnimationFrame(this.drawCB);
+          this.tick++; // Increment global tick.
+          this.nextMaskCb(); // Process current state in mask display lifecycle.
+          this.createNewParticle(); // Generate new particles.
+          this.clear(); // Clear canvas for new frame.
+          this.drawStaticSectionsBackground(); // Draw the static "sections" text background.
+
+          // 'lighter' makes overlapping colors add up, creating a glowing effect.
+          this.engine.globalCompositeOperation = ENGINE_CONFIG.GLOBAL_COMPOSITE_OPERATION_LIGHTER;
+          this.drawStatic(); // Draw static elements (background patterns/glows).
+          this.renderParticles(); // Draw all active particles.
+          // Reset composite operation for other drawing (if any) or for next frame's clear.
+          this.engine.globalCompositeOperation = ENGINE_CONFIG.GLOBAL_COMPOSITE_OPERATION_SOURCE_OVER;
+          requestAnimationFrame(this.drawCB); // Request next frame.
         }
 
+        // --- Animation State Machine ---
+        // The following methods (fadeInMask, afterFadeIn, tickMask, fadeOutMask, afterFadeOut, nextMask)
+        // form a simple state machine. `this.nextMaskCb` (nextMaskCallback) is a function pointer
+        // that dictates the current state of the text mask's lifecycle.
+        // - `nextMask`: Switches to a new text mask from the cache.
+        // - `fadeInMask`: Gradually increases opacity of the current mask.
+        // - `afterFadeIn`: Called when fade-in is complete; transitions to `tickMask` if timed, or waits.
+        // - `tickMask`: Holds the mask visible for a specified duration.
+        // - `fadeOutMask`: Gradually decreases opacity of the current mask.
+        // - `afterFadeOut`: Called when fade-out is complete; transitions back to `nextMask` for the cycle to repeat.
+
         fadeInMask() {
-          this.opa += this.stack[this.stackId].fadeIn;
+          const currentStackItem = this.stack[this.stackId];
+          if (!currentStackItem || typeof currentStackItem.fadeIn !== 'number') {
+            console.warn("TextSparks: fadeInMask called with invalid currentStackItem for stackId", this.stackId);
+            this.opa = 1; // Force fade in
+            this.afterFadeIn();
+            return;
+          }
+          this.opa += currentStackItem.fadeIn;
           if (this.opa >= 1) {
             this.opa = 1;
             this.afterFadeIn();
@@ -378,16 +607,30 @@
 
         afterFadeIn() {
           this.opa = 1;
-          if (this.stack[this.stackId].ticks) {
+          const currentStackItem = this.stack[this.stackId];
+          if (currentStackItem && currentStackItem.ticks) {
             this.maskTick = 0;
             this.nextMaskCb = this.tickMask.bind(this);
           } else {
-            this.nextMaskCb = () => {};
+            // If no ticks, or stack item missing, try to proceed to fadeOut or next cycle
+            if (currentStackItem && currentStackItem.fadeOut) {
+              this.nextMaskCb = this.fadeOutMask.bind(this);
+            } else {
+              this.afterFadeOut(); // This eventually calls this.nextMask.bind(this)
+            }
           }
         }
 
         fadeOutMask() {
-          this.opa -= this.stack[this.stackId].fadeOut;
+          const currentStackItem = this.stack[this.stackId];
+          if (currentStackItem && typeof currentStackItem.fadeOut === 'number') {
+            this.opa -= currentStackItem.fadeOut;
+          } else {
+            // If no fadeOut data, or stack item missing, force fade out
+            console.warn("TextSparks: fadeOutMask called with invalid currentStackItem for stackId", this.stackId);
+            this.opa = 0; 
+          }
+
           if (this.opa <= 0) {
             this.afterFadeOut();
           }
@@ -399,25 +642,57 @@
         }
 
         tickMask() {
+          const currentStackItem = this.stack[this.stackId];
+          if (!currentStackItem) {
+            console.warn("TextSparks: tickMask called with invalid currentStackItem for stackId", this.stackId);
+            this.afterFadeOut(); // Transition to next state to avoid getting stuck
+            return;
+          }
+
           this.maskTick++;
-          if (this.maskTick >= this.stack[this.stackId].ticks) {
-            if (this.stack[this.stackId].fadeOut) {
-              this.nextMaskCb = this.fadeOutMask.bind(this);
+          if (this.maskTick >= currentStackItem.ticks) { // If mask display time is up
+            if (currentStackItem.fadeOut) {
+              this.nextMaskCb = this.fadeOutMask.bind(this); // Start fade out
             } else {
-              this.afterFadeOut();
+              this.afterFadeOut(); // Or directly go to after fade out if no fade defined
             }
           }
         }
 
+        /**
+         * Selects the next text mask from the pre-rendered `maskCache`.
+         * It then initiates the display lifecycle for this new mask,
+         * typically starting with a fade-in effect.
+         * Includes robustness checks for missing or invalid mask data.
+         */
         nextMask() {
           this.stackId++;
-          if (this.stackId >= this.stack.length) {
+          if (this.stackId >= this.stack.length) { // Loop back to the first mask if at the end.
             this.stackId = 0;
           }
-          this.mask = this.maskCache[this.stackId];
-          if (this.stack[this.stackId].fadeIn) {
+          this.currentMaskData = this.maskCache[this.stackId]; // Get the full data object
+
+          if (!this.currentMaskData) {
+            console.warn("TextSparks: No valid mask data found for stackId", this.stackId, "Mask cache length:", this.maskCache.length);
+            // Ensure dependent properties are initialized to prevent further errors
+            this.mask = []; // Assuming this.mask is expected to be an array for particles
+            this.currentMaskData = { particleMask: [], staticSections: [] }; // Provide a default structure
+            // Optionally, might want to stop further processing in this.draw if no mask,
+            // but for now, preventing the crash is key.
+          } else {
+            this.mask = this.currentMaskData.particleMask;
+            // Ensure staticSections exists, even if empty, on currentMaskData if it's a valid object
+            if (!this.currentMaskData.staticSections) {
+              this.currentMaskData.staticSections = [];
+            }
+          }
+          
+          // Start the display process for the new mask (usually fade-in).
+          // Check if stack[this.stackId] exists to prevent error if maskCache is misaligned with stack
+          if (this.stack[this.stackId] && this.stack[this.stackId].fadeIn) {
             this.nextMaskCb = this.fadeInMask.bind(this);
           } else {
+            // If no fade-in defined, or stack item missing, make it fully visible and move to the next appropriate state.
             this.opa = 1;
             this.afterFadeIn();
           }
