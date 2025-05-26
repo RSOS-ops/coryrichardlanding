@@ -12,7 +12,7 @@
         }
         body {
             background-color: black;
-            color: white;
+            color: white; 
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -36,16 +36,16 @@
             z-index: 1;
         }
         h1 {
-            font-size: 4em;
+            font-size: 4em; 
             margin-bottom: 20px;
             text-align: center;
-            z-index: 2; /* Ensure h1 is above canvases */
-            position: relative; /* Needed for z-index to apply if body isn't positioned */
+            position: relative; /* Ensure z-index applies */
+            z-index: 2; /* Above canvases */
         }
         div > ul[data-time] {
             display: none;
         }
-        #sections-container { /* Keep styles for when it's re-enabled */
+        #sections-container {
             display: flex;
             justify-content: space-around;
             width: 66%;
@@ -82,52 +82,93 @@
     <h1>Coming Soon</h1>
     <div id="sections-container" style="display: none;">
         <div class="section">DJ</div>
-        <div class="section">Music</div>
+        <div class.section">Music</div>
         <div class="section">Visual</div>
         <div class="section">Tech</div>
     </div>
     <script>
-// Global helper functions
-const color = (hsl, o) => {
+document.addEventListener('DOMContentLoaded', () => { 
+    const h1 = document.querySelector('h1');
+    if (h1) {
+        h1.textContent = 'SCRIPT BLOCK PARSED'; 
+    }
+});
+
+// Global helper
+const font = (size) => \`bold \${size}px Arial\`;
+const color = (hsl, o) => { // Added color function just in case it's needed by simplified fill
     return \`hsla(\${hsl.h | 0}, \${hsl.s}%, \${hsl.l}%, \${o})\`;
 };
-const font = (size) => \`bold \${size}px Arial\`; // Made global for simplicity in this test
 
 class TextSparks
 {
     constructor() {
+        const h1Constructor = document.querySelector('h1');
+        if(h1Constructor) h1Constructor.textContent = 'Constructor Entered';
+
         this.opa    = 0;
         this.tick   = 0;
-        this.drawCB = null;
-        this.mask   = null;
-        this.canvas = window.document.querySelector('#animationCanvas');
-        if (this.canvas) {
-            this.engine = this.canvas.getContext('2d');
-        } else {
-            // In a real scenario without console, this error won't be seen by user easily.
-            // For now, proceed assuming canvas exists, error will manifest as blank screen.
+        this.drawCB = null; 
+        this.mask   = null; 
+        
+        this.canvas = window.document.querySelector('#animationCanvas'); 
+        if (this.canvas && h1Constructor) {
+            h1Constructor.textContent = 'AnimCanvas Query Done';
+        } else if (h1Constructor) {
+             h1Constructor.textContent = 'AnimCanvas Query FAILED';
         }
-
+        
+        if (this.canvas) this.engine = this.canvas.getContext('2d');
+        
         this.staticCanvas = window.document.querySelector('#staticTextCanvas');
-        if (this.staticCanvas) {
-            this.staticEngine = this.staticCanvas.getContext('2d');
+        if (this.staticCanvas && h1Constructor) {
+            h1Constructor.textContent = 'StaticCanvas Query Done';
+        } else if (h1Constructor && !this.canvas) { // If anim canvas failed, this is next check
+             h1Constructor.textContent = 'StaticCanvas Query FAILED (Anim also)';
+        } else if (h1Constructor) {
+             h1Constructor.textContent = 'StaticCanvas Query FAILED (Anim OK)';
         }
 
-        this.maskTick   = 0;
-        this.nextMaskCb = null; // this.nextMask.bind(this); // Not needed now
-        this.maskCache  = [];
+        if (this.staticCanvas) this.staticEngine = this.staticCanvas.getContext('2d');
 
-        this.particleMap = new Map();
-        this.resize();
-        // this.fetchData(); // Disabled
-        // this.buildStackCache(); // Disabled
+        if (h1Constructor) {
+            if (this.canvas && this.staticCanvas) {
+                h1Constructor.textContent = 'Both Canvases Queried';
+                if (this.engine && this.staticEngine) {
+                    h1Constructor.textContent = 'Both Contexts OK';
+                } else if (this.engine) {
+                    h1Constructor.textContent = 'Anim Context OK, Static Failed/Missing';
+                } else if (this.staticEngine) {
+                    h1Constructor.textContent = 'Static Context OK, Anim Failed/Missing';
+                } else {
+                    h1Constructor.textContent = 'Both Contexts Failed';
+                }
+            } else if (this.canvas) {
+                 h1Constructor.textContent = 'AnimCanvas OK, StaticCanvas FAILED';
+            } else if (this.staticCanvas) {
+                 h1Constructor.textContent = 'StaticCanvas OK, AnimCanvas FAILED';
+            } else {
+                 h1Constructor.textContent = 'Both Canvases FAILED Query';
+            }
+        }
+
+        this.maskTick   = 0; 
+        this.nextMaskCb = null; //this.nextMask.bind(this); 
+        this.maskCache  = []; 
+        this.particleMap = new Map(); 
+        
+        if(h1Constructor && h1Constructor.textContent.includes('Context OK')) { // Only call resize if contexts look okay
+             this.resize(); 
+        } else if (h1Constructor) {
+            // Update h1 if not calling resize to show where it stopped
+            // h1Constructor.textContent += ' - Resize NOT Called'; // Avoid too much nesting
+        }
     }
 
     buildStackCache() { /* Disabled */ }
     fetchData() { /* Disabled */ }
-    buildTextMask(texts) { return []; /* Disabled, returns empty mask */ }
+    buildTextMask(texts) { return []; /* Disabled */ }
     createNewParticle() { /* Disabled */ }
-    // clear() { /* Disabled, resize handles initial clear test */ }
     prepareParticle(particle) { /* Disabled */ }
     drawParticle(particle) { /* Disabled */ }
     renderParticles() { /* Disabled */ }
@@ -139,22 +180,16 @@ class TextSparks
     afterFadeOut() { /* Disabled */ }
     tickMask() { /* Disabled */ }
     nextMask() { /* Disabled */ }
+    clear() { /* Disabled */ }
 
-    clear() { // This is the original clear method, let's keep it disabled from draw loop for now
-        /*
-        if(this.engine) {
-            this.engine.fillStyle = '#111';
-            this.engine.fillRect(0, 0, this.width, this.height);
-        }
-        */
-    }
-
-
-    randFromList(...rands) {
+    randFromList(...rands) { 
         return rands.reduce((acc, rand) => acc + rand, 0) / rands.length;
     }
 
     resize() {
+        const h1Resize = document.querySelector('h1');
+        if(h1Resize) h1Resize.textContent = 'Resize Entered';
+
         this.width  = window.innerWidth;
         this.height = window.innerHeight;
 
@@ -162,35 +197,39 @@ class TextSparks
             this.canvas.setAttribute('width', this.width);
             this.canvas.setAttribute('height', this.height);
             if (this.engine) {
-                this.engine.fillStyle = 'darkred'; // Test color for animation canvas
+                this.engine.fillStyle = 'darkred'; 
                 this.engine.fillRect(0, 0, this.width, this.height);
+            } else if (h1Resize) {
+                h1Resize.textContent = 'Resize: AnimEngine MISSING'; return;
             }
+        } else if (h1Resize) {
+            h1Resize.textContent = 'Resize: AnimCanvas MISSING'; return;
         }
+
         if (this.staticCanvas) {
             this.staticCanvas.setAttribute('width', this.width);
             this.staticCanvas.setAttribute('height', this.height);
             if (this.staticEngine) {
-                this.staticEngine.fillStyle = 'darkblue'; // Test color for static canvas
+                this.staticEngine.fillStyle = 'darkblue'; 
                 this.staticEngine.fillRect(0, 0, this.width, this.height);
+            } else if (h1Resize) {
+                h1Resize.textContent = 'Resize: StaticEngine MISSING'; return;
             }
+        } else if (h1Resize) {
+            h1Resize.textContent = 'Resize: StaticCanvas MISSING'; return;
+        }
+        
+        if (h1Resize) {
+            h1Resize.textContent = 'Resize Called - Canvases Colored?';
         }
     }
 
-    run() { /* Disabled for this test */ }
+    run() { /* Disabled */ }
 }
 
 const a = new TextSparks();
-// a.run(); // run() is disabled, constructor calls resize() which does the test drawing.
+// a.run(); // run() is disabled
 
-// To ensure h1 is visible if canvases are full screen
-document.addEventListener('DOMContentLoaded', () => {
-    const h1 = document.querySelector('h1');
-    if (h1) {
-        h1.style.zIndex = '2';
-        h1.style.position = 'relative'; // Ensure z-index applies
-    }
-});
-
-    </script>
+</script>
 </body>
-</html> 
+</html>
