@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -25,9 +25,18 @@
             font-family: 'Roboto', sans-serif; /* Added a default font */
         }
         /* div { display:none; } Removed as it hides essential content including the animation div */
-        canvas {
-            width:100vw;
-            height:100vh;
+        #staticTextCanvas, #animationCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+        #staticTextCanvas {
+            z-index: 0;
+        }
+        #animationCanvas {
+            z-index: 1;
         }
         h1 {
             font-size: 4em; /* "Very large" text */
@@ -78,31 +87,39 @@
         <li data-hue="45" data-role="sections">Tech</li>
       </ul>
     </div>
-    <canvas></canvas>
+    <canvas id="staticTextCanvas"></canvas>
+    <canvas id="animationCanvas"></canvas>
     <h1>Coming Soon</h1>
     <div id="sections-container" style="display: none;">
         <div class="section">DJ</div>
         <div class="section">Music</div>
         <div class="section">Visual</div>
-        <div class="section">Tech</div>
+        <div class.section">Tech</div>
     </div>
     <script>
 const newParticlesPerFrame = 50;
 
 const color = (hsl, o) => {
-    return `hsla(${hsl.h | 0}, ${hsl.s}%, ${hsl.l}%, ${o})`;
+    return \`hsla(\${hsl.h | 0}, \${hsl.s}%, \${hsl.l}%, \${o})\`;
 };
+
+// Helper function for font string
+const font = (size) => \`bold \${size}px Arial\`;
 
 class TextSparks
 {
     constructor() {
-
         this.opa    = 0;
         this.tick   = 0;
         this.drawCB = null;
         this.mask   = null;
-        this.canvas = window.document.querySelector('canvas');
+        this.canvas = window.document.querySelector('#animationCanvas'); 
         this.engine = this.canvas.getContext('2d');
+        
+        this.staticCanvas = window.document.querySelector('#staticTextCanvas');
+        if (this.staticCanvas) {
+            this.staticEngine = this.staticCanvas.getContext('2d');
+        }
 
         this.maskTick   = 0;
         this.nextMaskCb = this.nextMask.bind(this);
@@ -113,19 +130,15 @@ class TextSparks
         this.buildStackCache();
 
         this.particleMap = new Map();
-
     }
 
     buildStackCache() {
-
         this.maskCache = this.stack.map((stack) => {
             return this.buildTextMask(stack.texts);
         });
-
     }
 
     fetchData() {
-
         this.stackId = -1;
         this.stack   = [...document.querySelectorAll('div > ul')].map(ul => {
             return {
@@ -140,346 +153,261 @@ class TextSparks
                             s :li.hasAttribute('data-saturation') ? Number(li.getAttribute('data-saturation')) : 100,
                             l :li.hasAttribute('data-lightness') ? Number(li.getAttribute('data-lightness')) : 50
                         },
-                        role : li.getAttribute('data-role') || '' // Get data-role, default to empty string if not present
+                        role : li.getAttribute('data-role') || ''
                     };
                 })
             };
         });
-
     }
 
     resize() {
-
         this.width  = window.innerWidth;
         this.height = window.innerHeight;
 
-        this.canvas.setAttribute('width', this.width);
-        this.canvas.setAttribute('height', this.height);
-
+        if(this.canvas){
+            this.canvas.setAttribute('width', this.width);
+            this.canvas.setAttribute('height', this.height);
+        }
+        if (this.staticCanvas) {
+            this.staticCanvas.setAttribute('width', this.width);
+            this.staticCanvas.setAttribute('height', this.height);
+        }
+        
+        if (this.staticEngine) {
+            this.staticEngine.clearRect(0, 0, this.width, this.height);
+        }
     }
 
     buildTextMask(texts) {
-        const mask = [];
-        const canvasWidth = 200; // Renamed from width to avoid conflict
-        const canvasHeight = 150; // Adjusted for two lines
+        const mask = []; 
+        const canvasWidth = 200; 
+        const canvasHeight = 150; 
 
         const mainNameTexts = texts.filter(t => t.role === 'main-name');
-        const sectionsTexts = texts.filter(t => t.role === 'sections');
+        const sectionsTexts = texts.filter(t => t.role === 'sections'); 
 
-        const canvas = document.createElement('canvas');
-        const engine = canvas.getContext('2d');
-        canvas.setAttribute('width', canvasWidth);
-        canvas.setAttribute('height', canvasHeight);
+        const tempRenderCanvas = document.createElement('canvas'); 
+        const tempEngine = tempRenderCanvas.getContext('2d');
+        tempRenderCanvas.setAttribute('width', canvasWidth);
+        tempRenderCanvas.setAttribute('height', canvasHeight);
 
-        const font = (size) => `bold ${size}px Arial`;
-        engine.fillStyle = '#000'; // Color of text to draw (then read as mask)
-
-        // --- Render "main-name" Text ---
         if (mainNameTexts.length > 0) {
             const mainNameString = mainNameTexts.map(t => t.text).join('');
-            const baseMainFontSize = 40; // Larger base for main name
+            let fSizeMain = 20; 
             
-            engine.font = font(baseMainFontSize);
-            let mMain = engine.measureText(mainNameString);
-            // Adjust font size to fit width, aiming for 90% of canvas width
-            let fSizeMain = Math.min(baseMainFontSize, (canvasWidth * 0.9 / mMain.width) * baseMainFontSize);
+            tempEngine.font = font(fSizeMain); 
+            const fontWidthMain = tempEngine.measureText(mainNameString).width;
             
-            engine.font = font(fSizeMain);
-            mMain = engine.measureText(mainNameString); // Re-measure with new font size
-            const fontWidthMain = mMain.width;
-            
-            // Position main name text: Y centered in top half, X centered
-            const yMainName = (canvasHeight / 4) + (fSizeMain / 3); // Adjusted for better centering in top half
-            let currentXMainName = (canvasWidth - fontWidthMain) / 2;
+            const yMainName = (canvasHeight / 4) + (fSizeMain / 3); 
+            let currentXMainNameOnTemp = (canvasWidth - fontWidthMain) / 2; 
 
-            mainNameTexts.forEach(textStack => {
-                engine.clearRect(0, 0, canvasWidth, canvasHeight);
-                engine.font = font(fSizeMain); // Ensure font is set for each part
-                engine.fillText(textStack.text, currentXMainName, yMainName);
-                
-                const textPartWidth = engine.measureText(textStack.text).width;
-                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
-                const subStack = [];
-                for (let i = 0; i < data.data.length; i += 4) {
-                    if (data.data[i + 3] > 0) { // Check alpha channel
-                        const pixelIndex = i / 4;
-                        subStack.push({
-                            x: (pixelIndex % canvasWidth) / canvasWidth,
-                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
-                            o: Math.random(),
-                            t: Math.random()
-                        });
-                    }
+            mainNameTexts.forEach(textStack => { 
+                tempEngine.clearRect(0, 0, canvasWidth, canvasHeight); 
+                tempEngine.fillText(textStack.text, currentXMainNameOnTemp, yMainName); 
+
+                if (this.staticEngine && this.width && this.height) { 
+                    const staticFSizeMain = fSizeMain * (this.width / canvasWidth);
+                    this.staticEngine.font = font(staticFSizeMain);
+                    this.staticEngine.fillStyle = color(textStack.hsl, 1);
+                    const staticXMain = (currentXMainNameOnTemp / canvasWidth) * this.width;
+                    const staticYMain = (yMainName / canvasHeight) * this.height;
+                    this.staticEngine.fillText(textStack.text, staticXMain, staticYMain);
                 }
-                mask.push({ hsl: textStack.hsl, s: subStack });
-                currentXMainName += textPartWidth;
+                currentXMainNameOnTemp += tempEngine.measureText(textStack.text).width;
             });
         }
 
-        // --- Render "sections" Text ---
         if (sectionsTexts.length > 0) {
-            const sectionsString = sectionsTexts.map(t => t.text).join('');
-            // fSizeMain might not be defined if mainNameTexts is empty, handle this.
-            // However, problem implies both exist. Assume fSizeMain is available from previous block or set a default.
-            // For safety, let's use a base size related to canvasHeight if fSizeMain wasn't set.
-            let fSizeMainVal = 30; // Default base for sections if mainNameTexts was empty
-            if (mainNameTexts.length > 0 && engine.font.includes("px")) {
-                // Safely get fSizeMain from the engine.font set in the previous block
-                const fontMatch = engine.font.match(/(\d+)px/);
-                if (fontMatch && fontMatch[1]) {
-                    fSizeMainVal = parseFloat(fontMatch[1]);
+            let fSizeSections = 10; 
+            tempEngine.font = font(fSizeSections); 
+            const spacerWidthOnTemp = tempEngine.measureText(' ').width * 3; 
+
+            let sectionsContentWidthOnTemp = 0;
+            sectionsTexts.forEach((item, index) => {
+                sectionsContentWidthOnTemp += tempEngine.measureText(item.text).width;
+                if (index < sectionsTexts.length - 1) {
+                    sectionsContentWidthOnTemp += spacerWidthOnTemp;
                 }
-            }
-            
-            const baseSectionsFontSize = fSizeMainVal * 0.6; 
-            engine.font = font(baseSectionsFontSize); // Set with base sections font
-            let mSections = engine.measureText(sectionsString); // Measure
-            
-            // Scale fSizeSections to fit width, similar to fSizeMain
-            let fSizeSections = Math.min(baseSectionsFontSize, (canvasWidth * 0.9 / mSections.width) * baseSectionsFontSize);
-            fSizeSections = Math.max(fSizeSections, 1); // Ensure minimum font size of 1px
+            });
 
-            engine.font = font(fSizeSections); // Set to final, fitted fSizeSections
-            // Re-measure with final font size for accurate centering
-            const fontWidthSections = engine.measureText(sectionsString).width; 
+            let currentXSectionsOnTemp = (canvasWidth - sectionsContentWidthOnTemp) / 2;
+            const ySections = (canvasHeight * 0.75) + (fSizeSections / 3); 
 
-            // Position sections text: Y centered in bottom half, X centered
-            const ySections = (canvasHeight * 0.75) + (fSizeSections / 3); // Adjusted for better centering in bottom half
-            let currentXSections = (canvasWidth - fontWidthSections) / 2;
+            sectionsTexts.forEach((item, index) => { 
+                tempEngine.clearRect(0, 0, canvasWidth, canvasHeight); 
+                tempEngine.fillText(item.text, currentXSectionsOnTemp, ySections); 
 
-            sectionsTexts.forEach(textStack => {
-                engine.clearRect(0, 0, canvasWidth, canvasHeight);
-                engine.font = font(fSizeSections); // Ensure font is set for each part
-                engine.fillText(textStack.text, currentXSections, ySections);
+                if (this.staticEngine && this.width && this.height) { 
+                    const staticFSizeSections = fSizeSections * (this.width / canvasWidth);
+                    this.staticEngine.font = font(staticFSizeSections);
+                    this.staticEngine.fillStyle = color(item.hsl, 1);
+                    const staticXSections = (currentXSectionsOnTemp / canvasWidth) * this.width;
+                    const staticYSections = (ySections / canvasHeight) * this.height;
+                    this.staticEngine.fillText(item.text, staticXSections, staticYSections);
+                }
                 
-                const textPartWidth = engine.measureText(textStack.text).width;
-                const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
-                const subStack = [];
-                for (let i = 0; i < data.data.length; i += 4) {
-                    if (data.data[i + 3] > 0) {
-                        const pixelIndex = i / 4;
-                        subStack.push({
-                            x: (pixelIndex % canvasWidth) / canvasWidth,
-                            y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
-                            o: Math.random(),
-                            t: Math.random()
-                        });
-                    }
+                currentXSectionsOnTemp += tempEngine.measureText(item.text).width;
+                if (index < sectionsTexts.length - 1) {
+                    currentXSectionsOnTemp += spacerWidthOnTemp;
                 }
-                mask.push({ hsl: textStack.hsl, s: subStack });
-                currentXSections += textPartWidth;
             });
         }
-        return mask;
+        return mask; // Will be empty, so no particle animation
     }
 
     createNewParticle() {
+        if (!this.mask || this.mask.length === 0) return; 
 
         for (let i = 0; i < newParticlesPerFrame; i++) {
+            let main = Math.random() * this.mask.length | 0;
+            
+            if (!this.mask[main] || !this.mask[main].s || this.mask[main].s.length === 0) continue;
 
-            let main        = Math.random() * this.mask.length | 0;
-            let subMask     = this.mask[main];
-            let maskElement = this.mask[main].s[Math.random() * this.mask[main].s.length | 0];
+            let subMask = this.mask[main];
+            let maskElement = subMask.s[Math.random() * subMask.s.length | 0];
 
-            if (subMask && maskElement) {
+            if (subMask && maskElement) { 
                 let particle = {
-                    x   : maskElement.x,
-                    y   : maskElement.y,
-                    hsl : subMask.hsl,
-                    c   : this.prepareParticle
+                    x: maskElement.x,
+                    y: maskElement.y,
+                    hsl: subMask.hsl,
+                    c: this.prepareParticle
                 };
-
                 this.particleMap.set(particle, particle);
             }
-
-        }
-    }
-
-    secLog(log, timesPerFrame) {
-        if(Math.random() < 1 / 60 / timesPerFrame) {
-            console.log(log);
         }
     }
 
     clear() {
-        this.engine.fillStyle = '#111';
-        this.engine.fillRect(0, 0, this.width, this.height);
+        if(this.engine) {
+            this.engine.fillStyle = '#111';
+            this.engine.fillRect(0, 0, this.width, this.height);
+        }
     }
 
-    randFromList(...rands) {
+    prepareParticle(particle) {
+        const r1 = Math.random();
+        const r2 = Math.random();
+        const r3 = Math.random();
+        const rad = r3 * Math.PI * 2;
+        particle.x += (-0.5 + r1) / 300;
+        particle.y += (-0.5 + r2) / 300;
+        particle.si = 1 + Math.random() * 4 | 0;
+        particle.s = 0.003 + this.randFromList(r1, r2) / 10;
+        particle.l = 0;
+        particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
+        particle.my = Math.sin(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
+        particle.c = this.drawParticle;
+    }
+    
+    randFromList(...rands) { 
         return rands.reduce((acc, rand) => {
             return acc + rand;
         }, 0) / rands.length;
     }
 
-    prepareParticle(particle) {
-
-        const r1 = Math.random();
-        const r2 = Math.random();
-        const r3 = Math.random();
-
-        const rad = r3 * Math.PI * 2;
-
-        particle.x += (-0.5 + r1) / 300;
-        particle.y += (-0.5 + r2) / 300;
-        particle.si = 1 + Math.random() * 4 | 0;
-        // particle.cc = this.randFromList(r2, r3);
-        // particle.cc = this.hue / 365;
-
-        particle.s = 0.003 + this.randFromList(r1, r2) / 10;
-        particle.l = 0;
-
-        particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
-        particle.my = Math.sin(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
-
-        particle.c = this.drawParticle;
-    }
-
     drawParticle(particle) {
-
         if (particle.l >= 1) {
             particle.c = null;
             return;
         }
-
         particle.l += particle.s;
         particle.x += particle.mx;
         particle.y += particle.my;
-
-        this.engine.fillStyle = color(particle.hsl, this.opa * Math.sin(particle.l * Math.PI));
-        this.engine.fillRect(particle.x * this.width, particle.y * this.height, particle.si, particle.si);
-
+        if(this.engine){ 
+            this.engine.fillStyle = color(particle.hsl, this.opa * Math.sin(particle.l * Math.PI));
+            this.engine.fillRect(particle.x * this.width, particle.y * this.height, particle.si, particle.si);
+        }
     }
 
     renderParticles() {
-
         this.particleMap.forEach((particle) => {
-
             particle.c.call(this, particle);
-
             if (!particle.c) {
                 this.particleMap.delete(particle);
             }
-
         });
-
     }
 
-    drawStatic() {
+    drawStatic() { 
+        if (!this.mask || this.mask.length === 0 || !this.engine) return; 
 
         let i = 0;
         const step = 0.01;
-
         this.mask.forEach(subMask => {
-            subMask.s.forEach(pos => {
-
-                i++;
-
-                this.engine.fillStyle = color(subMask.hsl, (1 + Math.cos(pos.x * 5 * pos.y * 5 + this.tick / 10)) / 2 * this.opa * pos.t * 0.5);
-                this.engine.fillRect(
-                    pos.x * this.width,
-                    pos.y * this.height,
-                    this.width / 150,
-                    this.width / 150
-                );
-
-                if (i % 2) {
-                    return;
-                }
-
-                pos.o        += step;
-                const opa     = Math.max(0, Math.sin(pos.o * Math.PI * 2));
-                const padding = opa * this.width / 200;
-
-                this.engine.fillStyle = color(subMask.hsl, this.opa * opa * 0.2);
-
-                if (pos.t < 0.5) {
-                    this.engine.beginPath();
-                    this.engine.arc(
-                        pos.x * this.width,
-                        pos.y * this.height,
-                        this.width / 500  + padding,
-                        0,
-                        Math.PI * 2
-                    );
-                    this.engine.fill();
-                } else {
-                    this.engine.fillRect(
-                        pos.x * this.width - padding,
-                        pos.y * this.height - padding,
-                        this.width / 150  + padding * 2,
-                        this.width / 150  + padding * 2
-                    );
-                }
-
-            });
+            if (subMask && subMask.s) { 
+                subMask.s.forEach(pos => {
+                    i++;
+                    this.engine.fillStyle = color(subMask.hsl, (1 + Math.cos(pos.x * 5 * pos.y * 5 + this.tick / 10)) / 2 * this.opa * pos.t * 0.5);
+                    this.engine.fillRect(pos.x * this.width, pos.y * this.height, this.width / 150, this.width / 150);
+                    if (i % 2) return;
+                    pos.o += step;
+                    const opa = Math.max(0, Math.sin(pos.o * Math.PI * 2));
+                    const padding = opa * this.width / 200;
+                    this.engine.fillStyle = color(subMask.hsl, this.opa * opa * 0.2);
+                    if (pos.t < 0.5) {
+                        this.engine.beginPath();
+                        this.engine.arc(pos.x * this.width, pos.y * this.height, this.width / 500  + padding, 0, Math.PI * 2);
+                        this.engine.fill();
+                    } else {
+                        this.engine.fillRect(pos.x * this.width - padding, pos.y * this.height - padding, this.width / 150  + padding * 2, this.width / 150  + padding * 2);
+                    }
+                });
+            }
         });
-
-
-
     }
 
     draw() {
-
         this.tick++;
+        if(this.nextMaskCb) this.nextMaskCb(); 
+        if(this.mask && this.mask.length > 0) this.createNewParticle(); 
+        this.clear(); 
 
-        this.nextMaskCb();
-        this.createNewParticle();
-        this.clear();
-
-        this.engine.globalCompositeOperation = 'lighter';
-        this.drawStatic();
-        this.renderParticles();
-        this.engine.globalCompositeOperation = 'source-over';
-
-        requestAnimationFrame(this.drawCB);
-
+        if(this.engine) { 
+            this.engine.globalCompositeOperation = 'lighter';
+            this.drawStatic(); 
+            this.renderParticles();
+            this.engine.globalCompositeOperation = 'source-over';
+        }
+        if(this.drawCB) requestAnimationFrame(this.drawCB); 
     }
 
     fadeInMask() {
+        if (!this.stack || !this.stack[this.stackId]) return; 
         this.opa += this.stack[this.stackId].fadeIn;
-
         if (this.opa >= 1) {
             this.opa = 1;
-
             this.afterFadeIn();
         }
     }
 
     afterFadeIn() {
-
+        if (!this.stack || !this.stack[this.stackId]) return; 
         this.opa = 1;
-
         if (this.stack[this.stackId].ticks) {
             this.maskTick   = 0;
             this.nextMaskCb = this.tickMask.bind(this);
         } else {
             this.nextMaskCb = () => {};
         }
-
     }
 
     fadeOutMask() {
-
+        if (!this.stack || !this.stack[this.stackId]) return; 
         this.opa -= this.stack[this.stackId].fadeOut;
-
         if (this.opa <= 0) {
             this.afterFadeOut();
         }
-
     }
 
     afterFadeOut() {
-
         this.opa = 0;
         this.nextMaskCb = this.nextMask.bind(this);
-
     }
 
     tickMask() {
-
+        if (!this.stack || !this.stack[this.stackId]) return; 
         this.maskTick++;
-
         if (this.maskTick >= this.stack[this.stackId].ticks) {
             if (this.stack[this.stackId].fadeOut) {
                 this.nextMaskCb = this.fadeOutMask.bind(this);
@@ -487,20 +415,17 @@ class TextSparks
                 this.afterFadeOut();
             }
         }
-
     }
 
     nextMask() {
-
+        if (!this.stack || this.stack.length === 0) return; 
         this.stackId++;
-
         if (this.stackId >= this.stack.length) {
             this.stackId = 0;
         }
-
-        this.mask = this.maskCache[this.stackId];
-
-        if (this.stack[this.stackId].fadeIn) {
+        if (!this.maskCache) return; 
+        this.mask = this.maskCache[this.stackId]; 
+        if (this.stack[this.stackId] && this.stack[this.stackId].fadeIn) { 
             this.nextMaskCb = this.fadeInMask.bind(this);
         } else {
             this.opa = 1;
@@ -509,10 +434,8 @@ class TextSparks
     }
 
     run() {
-
         this.drawCB = this.draw.bind(this);
         this.drawCB();
-
     }
 }
 
