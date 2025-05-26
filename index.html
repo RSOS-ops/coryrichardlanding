@@ -73,9 +73,7 @@
       </ul>
     </div>
     <canvas></canvas>
-    <!-- TODO: This 'Coming Soon' message is currently hidden. Implement logic to display it when appropriate (e.g., after text animation, or remove if not needed). -->
     <h1>Coming Soon</h1>
-    <!-- TODO: This 'sections-container' is currently hidden. It's populated with static section names. Implement logic to display it when appropriate, potentially synchronizing with or following the 'TextSparks' animation, or remove if not needed. The 'TextSparks' animation also processes 'sections' roles from the UL list. Clarify if this static container is a fallback, an alternative, or for a future state. -->
     <div id="sections-container" style="display: none;">
       <div class="section">DJ</div>
       <div class="section">Music</div>
@@ -88,9 +86,13 @@
       const newParticlesPerFrame = 50;
 
       // Configuration constants
+      // Speed adjustments (factor of 3 slower) are now baked directly into these values.
+      // Original values are commented for reference.
       const PARTICLE_CONFIG = {
-        TICKS_MULTIPLIER: 0.05,
-        FADE_SPEED_DIVISOR: 50,
+        // TICKS_MULTIPLIER: 0.05, // Original
+        TICKS_MULTIPLIER: 0.15, // Adjusted: 0.05 * 3
+        // FADE_SPEED_DIVISOR: 50, // Original (used as numerator for fade speed)
+        FADE_SPEED_DIVISOR: 16.666666666666668, // Adjusted: 50 / 3
         DEFAULT_HUE: 0,
         DEFAULT_SATURATION: 100,
         DEFAULT_LIGHTNESS: 50
@@ -121,8 +123,10 @@
 
       const PARTICLE_PHYSICS = {
         POSITION_ADJUST_DIVISOR: 300,
-        BASE_LIFESPAN_INCREMENT: 0.003,
-        RANDOM_LIFESPAN_DIVISOR: 10,
+        // BASE_LIFESPAN_INCREMENT: 0.003, // Original
+        BASE_LIFESPAN_INCREMENT: 0.001, // Adjusted: 0.003 / 3
+        // RANDOM_LIFESPAN_DIVISOR: 10, // Original
+        RANDOM_LIFESPAN_DIVISOR: 30, // Adjusted: 10 * 3
         MAX_SIZE_RANDOM_FACTOR: 4,
         SLOW_SPEED_DIVISOR: 400,
         FAST_SPEED_DIVISOR: 10,
@@ -131,9 +135,11 @@
       };
 
       const STATIC_DRAW_CONFIG = {
-        TICK_EFFECT_DIVISOR: 10,
+        // TICK_EFFECT_DIVISOR: 10, // Original
+        TICK_EFFECT_DIVISOR: 30, // Adjusted: 10 * 3
         PRIMARY_OPACITY_T_FACTOR: 0.5,
-        SECONDARY_EFFECT_STEP: 0.01,
+        // SECONDARY_EFFECT_STEP: 0.01, // Original
+        SECONDARY_EFFECT_STEP: 0.0033333333333333335, // Adjusted: 0.01 / 3
         SECONDARY_PADDING_DIVISOR_WIDTH_RATIO: 200,
         SECONDARY_OPACITY_FACTOR: 0.2,
         ALTERNATE_RENDERING_MODULO: 2,
@@ -203,8 +209,8 @@
           this.stack = [...document.querySelectorAll('div > ul')].map(ul => {
             return {
               ticks: PARTICLE_CONFIG.TICKS_MULTIPLIER * (ul.hasAttribute('data-time') ? ul.getAttribute('data-time') : 0),
-              fadeIn: ul.hasAttribute('data-fade-in') ? PARTICLE_CONFIG.FADE_SPEED_DIVISOR / Number(ul.getAttribute('data-fade-in')) : 0,
-              fadeOut: ul.hasAttribute('data-fade-out') ? PARTICLE_CONFIG.FADE_SPEED_DIVISOR / Number(ul.getAttribute('data-fade-out')) : 0,
+              fadeIn: ul.hasAttribute('data-fade-in') ? (PARTICLE_CONFIG.FADE_SPEED_DIVISOR / Number(ul.getAttribute('data-fade-in'))) : 0,
+              fadeOut: ul.hasAttribute('data-fade-out') ? (PARTICLE_CONFIG.FADE_SPEED_DIVISOR / Number(ul.getAttribute('data-fade-out'))) : 0,
               texts: [...ul.querySelectorAll('li')].map(li => {
                 return {
                   text: li.innerHTML.trim(),
@@ -492,14 +498,28 @@
           });
         }
 
+        /**
+         * Main animation loop, called with requestAnimationFrame.
+         * Key steps:
+         * 1. Advances the mask display state (this.nextMaskCb()).
+         * 2. Creates new particles for the current frame (this.createNewParticle()).
+         * 3. Clears the canvas (this.clear()).
+         * 4. Sets 'lighter' compositing for additive blending of particles.
+         * 5. Draws static background elements/effects (this.drawStatic()).
+         * 6. Renders all active particles (this.renderParticles()).
+         * 7. Resets compositing mode and requests the next frame.
+         */
         draw() {
-          this.tick++;
-          this.nextMaskCb();
-          this.createNewParticle();
-          this.clear();
+          this.tick++; // Increment global tick.
+          this.nextMaskCb(); // Process current state in mask display lifecycle.
+          this.createNewParticle(); // Generate new particles.
+          this.clear(); // Clear canvas for new frame.
+
+          // 'lighter' makes overlapping colors add up, creating a glowing effect.
           this.engine.globalCompositeOperation = ENGINE_CONFIG.GLOBAL_COMPOSITE_OPERATION_LIGHTER;
-          this.drawStatic();
-          this.renderParticles();
+          this.drawStatic(); // Draw static elements (background patterns/glows).
+          this.renderParticles(); // Draw all active particles.
+          // Reset composite operation for other drawing (if any) or for next frame's clear.
           this.engine.globalCompositeOperation = ENGINE_CONFIG.GLOBAL_COMPOSITE_OPERATION_SOURCE_OVER;
           requestAnimationFrame(this.drawCB); // Request next frame.
         }
@@ -542,36 +562,29 @@
 
         afterFadeOut() {
           this.opa = 0;
-          this.nextMaskCb = this.nextMask.bind(this); // Prepare to switch to the next mask.
+          this.nextMaskCb = this.nextMask.bind(this);
         }
 
         tickMask() {
           this.maskTick++;
-          if (this.maskTick >= this.stack[this.stackId].ticks) { // If mask display time is up
+          if (this.maskTick >= this.stack[this.stackId].ticks) {
             if (this.stack[this.stackId].fadeOut) {
-              this.nextMaskCb = this.fadeOutMask.bind(this); // Start fade out
+              this.nextMaskCb = this.fadeOutMask.bind(this);
             } else {
-              this.afterFadeOut(); // Or directly go to after fade out if no fade defined
+              this.afterFadeOut();
             }
           }
         }
 
-        /**
-         * Selects the next text mask from the pre-rendered `maskCache`.
-         * It then initiates the display lifecycle for this new mask,
-         * typically starting with a fade-in effect.
-         */
         nextMask() {
           this.stackId++;
-          if (this.stackId >= this.stack.length) { // Loop back to the first mask if at the end.
+          if (this.stackId >= this.stack.length) {
             this.stackId = 0;
           }
-          this.mask = this.maskCache[this.stackId]; // Set the current mask.
-          // Start the display process for the new mask (usually fade-in).
+          this.mask = this.maskCache[this.stackId];
           if (this.stack[this.stackId].fadeIn) {
             this.nextMaskCb = this.fadeInMask.bind(this);
           } else {
-            // If no fade-in defined, make it fully visible and move to the next appropriate state.
             this.opa = 1;
             this.afterFadeIn();
           }
@@ -583,8 +596,8 @@
         }
       }
 
-      const a = new TextSparks(); // Create an instance of the animation.
-      a.run(); // Start the animation loop.
+      const a = new TextSparks();
+      a.run();
     </script>
   </body>
 </html>
