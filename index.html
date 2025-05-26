@@ -67,16 +67,21 @@
         <li data-hue="45" data-role="main-name">R</li>
         <li data-hue="197" data-role="main-name">D</li>
         <li data-hue="197" data-role="sections">DJ</li>
-        <li data-hue="300" data-role="sections">|</li>        
         <li data-hue="0" data-role="sections">Music</li>
-        <li data-hue="300" data-role="sections">|</li> 
         <li data-hue="197" data-role="sections">Visual</li>
-        <li data-hue="300" data-role="sections">|</li> 
         <li data-hue="45" data-role="sections">Tech</li>
       </ul>
     </div>
     <canvas></canvas>
-    
+    <!-- TODO: This 'Coming Soon' message is currently hidden. Implement logic to display it when appropriate (e.g., after text animation, or remove if not needed). -->
+    <h1>Coming Soon</h1>
+    <!-- TODO: This 'sections-container' is currently hidden. It's populated with static section names. Implement logic to display it when appropriate, potentially synchronizing with or following the 'TextSparks' animation, or remove if not needed. The 'TextSparks' animation also processes 'sections' roles from the UL list. Clarify if this static container is a fallback, an alternative, or for a future state. -->
+    <div id="sections-container" style="display: none;">
+      <div class="section">DJ</div>
+      <div class="section">Music</div>
+      <div class="section">Visual</div>
+      <div class="section">Tech</div>
+    </div>
     <script>
       // Controls the density/number of new particles generated each frame.
       // Adjust this value to tune performance versus visual effect.
@@ -99,16 +104,18 @@
         WIDTH: 200,
         HEIGHT: 150,
         FONT_STYLE_TEMPLATE: (size) => `bold ${size}px Arial`,
-        FILL_STYLE: '#000',
+        FILL_STYLE: '#000', // Used for offscreen canvas text rendering
         IMAGE_DATA_ALPHA_THRESHOLD: 0, // For checking if a pixel is part of the text
-        PIXEL_DATA_STRIDE: 4 // RGBA
+        PIXEL_DATA_STRIDE: 4, // RGBA
+        TEXT_ALIGN: 'left',
+        TEXT_BASELINE: 'alphabetic'
       };
 
       const MAIN_FONT_CONFIG = {
         BASE_SIZE: 40,
         Y_RATIO: 0.25, // canvasHeight / 4
-        SIZE_Y_OFFSET_RATIO: 0.3333, // fSizeMain / 3
-        WIDTH_SCALE_FACTOR: 0.9
+        SIZE_Y_OFFSET_RATIO: 0.3333, // fSizeMain / 3 (approx 1/3)
+        WIDTH_SCALE_FACTOR: 0.9 // Factor to scale text width against canvas width
       };
 
       const SECTIONS_FONT_CONFIG = {
@@ -117,6 +124,10 @@
         Y_RATIO: 0.75, // canvasHeight * 0.75
         MIN_FONT_SIZE: 1
       };
+
+      // Multiplier to increase the resolution of the temporary canvas for "sections" text,
+      // leading to a denser particle mask for these specific texts.
+      const SECTIONS_DENSITY_MULTIPLIER = 1.33;
 
       const PARTICLE_PHYSICS = {
         POSITION_ADJUST_DIVISOR: 300,
@@ -148,7 +159,8 @@
       const ENGINE_CONFIG = {
         CLEAR_COLOR: '#111',
         GLOBAL_COMPOSITE_OPERATION_LIGHTER: 'lighter',
-        GLOBAL_COMPOSITE_OPERATION_SOURCE_OVER: 'source-over'
+        GLOBAL_COMPOSITE_OPERATION_SOURCE_OVER: 'source-over',
+        OFFSCREEN_FILL_STYLE: '#000' // Fill style for text on offscreen canvas
       };
 
 
@@ -169,6 +181,7 @@
           this.tick = 0;
           this.drawCB = null; // Callback for requestAnimationFrame, bound to this.draw.
           this.mask = null; // Holds the currently active text mask (particle positions).
+          this.currentMaskData = null; // Holds the full data object for the current mask (particleMask + staticSections)
           this.canvas = window.document.querySelector('canvas');
           this.engine = this.canvas.getContext('2d');
           this.maskTick = 0; // Counter for the duration a mask stays visible.
@@ -182,6 +195,37 @@
           this.resize();
           this.fetchData();
           this.buildStackCache();
+        }
+
+        /**
+         * Renders the static "sections" text directly onto the main canvas.
+         * This text serves as a background and is rendered with opacity,
+         * scaled proportionally to the main canvas dimensions.
+         */
+        drawStaticSectionsBackground() {
+          if (!this.currentMaskData || !this.currentMaskData.staticSections || this.currentMaskData.staticSections.length === 0) {
+            return;
+          }
+          
+          this.engine.textAlign = MASK_CANVAS_CONFIG.TEXT_ALIGN;
+          this.engine.textBaseline = MASK_CANVAS_CONFIG.TEXT_BASELINE;
+
+          this.currentMaskData.staticSections.forEach(sectionData => {
+            // Scale font size proportionally to the main canvas width
+            const scaledFontSize = (sectionData.sourceFontSize / sectionData.sourceCanvasWidth) * this.width;
+            
+            this.engine.font = MASK_CANVAS_CONFIG.FONT_STYLE_TEMPLATE(scaledFontSize); 
+
+            // Set fill style with 60% opacity
+            this.engine.fillStyle = color(sectionData.hsl, 0.6 * this.opa); // Multiply by global this.opa for fade effects
+
+            // Scale positions proportionally to the main canvas dimensions
+            const mainCanvasX = (sectionData.sourceX / sectionData.sourceCanvasWidth) * this.width;
+            const mainCanvasY = (sectionData.sourceY / sectionData.sourceCanvasHeight) * this.height;
+
+            // Draw text
+            this.engine.fillText(sectionData.text, mainCanvasX, mainCanvasY);
+          });
         }
 
         /**
@@ -239,132 +283,146 @@
          */
         buildTextMask(texts) {
           const mask = [];
-          const canvasWidth = MASK_CANVAS_CONFIG.WIDTH;
-          const canvasHeight = MASK_CANVAS_CONFIG.HEIGHT;
+          let staticSectionsData = []; 
+          const mainCanvasWidth = MASK_CANVAS_CONFIG.WIDTH;
+          const mainCanvasHeight = MASK_CANVAS_CONFIG.HEIGHT;
 
-          // Filters texts by their 'role' attribute to handle them differently.
           const mainNameTexts = texts.filter(t => t.role === 'main-name');
           const sectionsTexts = texts.filter(t => t.role === 'sections');
 
-          // Create an offscreen canvas for text rendering and pixel extraction.
-          const canvas = document.createElement('canvas');
-          const engine = canvas.getContext('2d');
-          canvas.setAttribute('width', canvasWidth);
-          canvas.setAttribute('height', canvasHeight);
+          // Main offscreen canvas for 'main-name' and initial font measurements
+          const mainOffscreenCanvas = document.createElement('canvas');
+          const mainOffscreenEngine = mainOffscreenCanvas.getContext('2d');
+          mainOffscreenCanvas.setAttribute('width', mainCanvasWidth);
+          mainOffscreenCanvas.setAttribute('height', mainCanvasHeight);
 
-          const font = MASK_CANVAS_CONFIG.FONT_STYLE_TEMPLATE;
-          engine.fillStyle = MASK_CANVAS_CONFIG.FILL_STYLE;
+          const fontTemplate = MASK_CANVAS_CONFIG.FONT_STYLE_TEMPLATE;
+          mainOffscreenEngine.fillStyle = ENGINE_CONFIG.OFFSCREEN_FILL_STYLE;
+          mainOffscreenEngine.textAlign = MASK_CANVAS_CONFIG.TEXT_ALIGN;
+          mainOffscreenEngine.textBaseline = MASK_CANVAS_CONFIG.TEXT_BASELINE;
+
+          let fSizeMainVal = SECTIONS_FONT_CONFIG.DEFAULT_MAIN_FONT_SIZE_FALLBACK; // Default if no mainNameTexts
 
           if (mainNameTexts.length > 0) {
             const mainNameString = mainNameTexts.map(t => t.text).join('');
             const baseMainFontSize = MAIN_FONT_CONFIG.BASE_SIZE;
-            engine.font = font(baseMainFontSize);
-            let mMain = engine.measureText(mainNameString);
-            let fSizeMain = Math.min(baseMainFontSize, (canvasWidth * MAIN_FONT_CONFIG.WIDTH_SCALE_FACTOR / mMain.width) * baseMainFontSize);
-            engine.font = font(fSizeMain);
-            mMain = engine.measureText(mainNameString);
+            mainOffscreenEngine.font = fontTemplate(baseMainFontSize);
+            let mMain = mainOffscreenEngine.measureText(mainNameString);
+            let fSizeMain = Math.min(baseMainFontSize, (mainCanvasWidth * MAIN_FONT_CONFIG.WIDTH_SCALE_FACTOR / mMain.width) * baseMainFontSize);
+            mainOffscreenEngine.font = fontTemplate(fSizeMain);
+            mMain = mainOffscreenEngine.measureText(mainNameString);
             const fontWidthMain = mMain.width;
-            const yMainName = (canvasHeight * MAIN_FONT_CONFIG.Y_RATIO) + (fSizeMain * MAIN_FONT_CONFIG.SIZE_Y_OFFSET_RATIO);
-            let currentXMainName = (canvasWidth - fontWidthMain) / 2;
+            const yMainName = (mainCanvasHeight * MAIN_FONT_CONFIG.Y_RATIO) + (fSizeMain * MAIN_FONT_CONFIG.SIZE_Y_OFFSET_RATIO);
+            let currentXMainName = (mainCanvasWidth - fontWidthMain) / 2;
+            
+            fSizeMainVal = fSizeMain; // Store for sections base font size calculation
 
-            // Part 1: Process texts designated as 'main-name'.
             mainNameTexts.forEach(textStack => {
-              engine.clearRect(0, 0, canvasWidth, canvasHeight);
-              engine.font = font(fSizeMain);
-              engine.fillText(textStack.text, currentXMainName, yMainName);
-              const textPartWidth = engine.measureText(textStack.text).width;
-              // Get pixel data from the offscreen canvas.
-              const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+              mainOffscreenEngine.clearRect(0, 0, mainCanvasWidth, mainCanvasHeight);
+              mainOffscreenEngine.font = fontTemplate(fSizeMain);
+              mainOffscreenEngine.fillText(textStack.text, currentXMainName, yMainName);
+              const textPartWidth = mainOffscreenEngine.measureText(textStack.text).width;
+              const data = mainOffscreenEngine.getImageData(0, 0, mainCanvasWidth, mainCanvasHeight);
               const subStack = [];
-              // Iterate through pixel data (RGBA) to find non-transparent pixels.
-              // For each visible pixel, its normalized coordinates are stored.
               for (let i = 0; i < data.data.length; i += MASK_CANVAS_CONFIG.PIXEL_DATA_STRIDE) {
-                // Check the alpha channel.
                 if (data.data[i + 3] > MASK_CANVAS_CONFIG.IMAGE_DATA_ALPHA_THRESHOLD) {
                   const pixelIndex = i / MASK_CANVAS_CONFIG.PIXEL_DATA_STRIDE;
-                  const x = (pixelIndex % canvasWidth) / canvasWidth;
-                  const y = Math.floor(pixelIndex / canvasWidth) / canvasHeight;
+                  const x = (pixelIndex % mainCanvasWidth) / mainCanvasWidth;
+                  const y = Math.floor(pixelIndex / mainCanvasWidth) / mainCanvasHeight;
                   subStack.push({
                     x: x,
                     y: y,
-                    xy_factor: x * 5 * y * 5, // Pre-calculate xy_factor
+                    xy_factor: x * 5 * y * 5, 
                     o: Math.random(),
                     t: Math.random()
                   });
                 }
               }
-              mask.push({ hsl: textStack.hsl, s: subStack });
+              mask.push({ hsl: textStack.hsl, s: subStack, role: textStack.role });
               currentXMainName += textPartWidth;
             });
           }
 
           if (sectionsTexts.length > 0) {
-            const sectionsString = sectionsTexts.map(t => t.text).join('');
-            // Initialize fSizeMainVal with a default font size.
-            // This value will be used if mainNameTexts is empty or its font size cannot be determined.
-            let fSizeMainVal = SECTIONS_FONT_CONFIG.DEFAULT_MAIN_FONT_SIZE_FALLBACK; 
-            if (mainNameTexts.length > 0) {
-              // Ensure engine.font is set (it should be from mainNameTexts processing)
-              // and attempt to parse the font size.
-              if (engine.font && engine.font.includes("px")) {
-                const fontMatch = engine.font.match(/(\d+)px/);
-                if (fontMatch && fontMatch[1]) {
-                  fSizeMainVal = parseFloat(fontMatch[1]);
-                }
-                // If fontMatch fails, fSizeMainVal retains its default value.
-              }
-              // If engine.font was not set or didn't include "px", fSizeMainVal also retains its default.
-            }
-            // Calculate base font size for sections relative to the main name font size or its default.
-            const baseSectionsFontSize = fSizeMainVal * SECTIONS_FONT_CONFIG.BASE_SIZE_RATIO;
-            engine.font = font(baseSectionsFontSize);
-            let mSections = engine.measureText(sectionsString);
-            let fSizeSections = Math.min(baseSectionsFontSize, (canvasWidth * MAIN_FONT_CONFIG.WIDTH_SCALE_FACTOR / mSections.width) * baseSectionsFontSize);
-            // Ensure fSizeSections is a positive number, defaulting to 1 if calculation leads to zero or negative.
-            fSizeSections = Math.max(fSizeSections, SECTIONS_FONT_CONFIG.MIN_FONT_SIZE); 
-            engine.font = font(fSizeSections);
-            const fontWidthSections = engine.measureText(sectionsString).width;
-            const ySections = (canvasHeight * SECTIONS_FONT_CONFIG.Y_RATIO) + (fSizeSections * MAIN_FONT_CONFIG.SIZE_Y_OFFSET_RATIO); // Using SIZE_Y_OFFSET_RATIO from MAIN_FONT_CONFIG as it's fSize/3
-            let currentXSections = (canvasWidth - fontWidthSections) / 2;
+            const sectionsCanvas = document.createElement('canvas');
+            const sectionsEngine = sectionsCanvas.getContext('2d');
+            const sectionsCanvasWidth = MASK_CANVAS_CONFIG.WIDTH * SECTIONS_DENSITY_MULTIPLIER;
+            const sectionsCanvasHeight = MASK_CANVAS_CONFIG.HEIGHT * SECTIONS_DENSITY_MULTIPLIER;
+            sectionsCanvas.setAttribute('width', sectionsCanvasWidth);
+            sectionsCanvas.setAttribute('height', sectionsCanvasHeight);
+            
+            sectionsEngine.fillStyle = ENGINE_CONFIG.OFFSCREEN_FILL_STYLE;
+            sectionsEngine.textAlign = MASK_CANVAS_CONFIG.TEXT_ALIGN;
+            sectionsEngine.textBaseline = MASK_CANVAS_CONFIG.TEXT_BASELINE;
 
-            // Part 2: Process texts designated as 'sections'.
+            const sectionsString = sectionsTexts.map(t => t.text).join('');
+            const baseSectionsFontSize = fSizeMainVal * SECTIONS_FONT_CONFIG.BASE_SIZE_RATIO * SECTIONS_DENSITY_MULTIPLIER; // Scale base by density for larger canvas
+            
+            sectionsEngine.font = fontTemplate(baseSectionsFontSize);
+            let mSections = sectionsEngine.measureText(sectionsString);
+            let fSizeSections = Math.min(baseSectionsFontSize, (sectionsCanvasWidth * MAIN_FONT_CONFIG.WIDTH_SCALE_FACTOR / mSections.width) * baseSectionsFontSize);
+            fSizeSections = Math.max(fSizeSections, SECTIONS_FONT_CONFIG.MIN_FONT_SIZE * SECTIONS_DENSITY_MULTIPLIER); // Ensure min font size is also scaled
+
+            sectionsEngine.font = fontTemplate(fSizeSections);
+            const fontWidthSections = sectionsEngine.measureText(sectionsString).width;
+            const ySections = (sectionsCanvasHeight * SECTIONS_FONT_CONFIG.Y_RATIO) + (fSizeSections * MAIN_FONT_CONFIG.SIZE_Y_OFFSET_RATIO);
+            let currentXSections = (sectionsCanvasWidth - fontWidthSections) / 2;
+
             sectionsTexts.forEach(textStack => {
-              engine.clearRect(0, 0, canvasWidth, canvasHeight);
-              engine.font = font(fSizeSections);
-              engine.fillText(textStack.text, currentXSections, ySections);
-              const textPartWidth = engine.measureText(textStack.text).width;
-              // Get pixel data, similar to 'main-name' processing.
-              const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+              sectionsEngine.clearRect(0, 0, sectionsCanvasWidth, sectionsCanvasHeight);
+              sectionsEngine.font = fontTemplate(fSizeSections);
+              sectionsEngine.fillText(textStack.text, currentXSections, ySections);
+
+              staticSectionsData.push({
+                text: textStack.text,
+                hsl: textStack.hsl,
+                sourceX: currentXSections,
+                sourceY: ySections,
+                sourceFontSize: fSizeSections, // This is the size used on the sectionsCanvas
+                sourceCanvasWidth: sectionsCanvasWidth,
+                sourceCanvasHeight: sectionsCanvasHeight
+              });
+
+              const textPartWidth = sectionsEngine.measureText(textStack.text).width;
+              const data = sectionsEngine.getImageData(0, 0, sectionsCanvasWidth, sectionsCanvasHeight);
               const subStack = [];
-              // Iterate through pixel data for 'sections' text.
               for (let i = 0; i < data.data.length; i += MASK_CANVAS_CONFIG.PIXEL_DATA_STRIDE) {
                 if (data.data[i + 3] > MASK_CANVAS_CONFIG.IMAGE_DATA_ALPHA_THRESHOLD) {
                   const pixelIndex = i / MASK_CANVAS_CONFIG.PIXEL_DATA_STRIDE;
-                  const x = (pixelIndex % canvasWidth) / canvasWidth;
-                  const y = Math.floor(pixelIndex / canvasWidth) / canvasHeight;
+                  const x = (pixelIndex % sectionsCanvasWidth) / sectionsCanvasWidth;
+                  const y = Math.floor(pixelIndex / sectionsCanvasWidth) / sectionsCanvasHeight;
                   subStack.push({
                     x: x,
                     y: y,
-                    xy_factor: x * 5 * y * 5, // Pre-calculate xy_factor
+                    xy_factor: x * 5 * y * 5,
                     o: Math.random(),
                     t: Math.random()
                   });
                 }
               }
-              mask.push({ hsl: textStack.hsl, s: subStack });
+              mask.push({ hsl: textStack.hsl, s: subStack, role: textStack.role });
               currentXSections += textPartWidth;
             });
           }
-          return mask;
+          return { particleMask: mask, staticSections: staticSectionsData };
         }
 
         createNewParticle() {
+          // Ensure this.mask (particleMask) is valid before proceeding
+          if (!this.mask || this.mask.length === 0) {
+            return; 
+          }
           for (let i = 0; i < newParticlesPerFrame; i++) {
             let main = Math.random() * this.mask.length | 0;
             let subMask = this.mask[main];
-            let maskElement = this.mask[main].s[Math.random() * this.mask[main].s.length | 0];
 
-            if (subMask && maskElement) {
+            if (!subMask || !subMask.s || subMask.s.length === 0) {
+              continue; 
+            }
+
+            let maskElement = subMask.s[Math.random() * subMask.s.length | 0];
+
+            if (subMask && maskElement) { 
               let particle = {
                 x: maskElement.x,
                 y: maskElement.y,
@@ -450,8 +508,10 @@
           const baseParticleSize = this.width / STATIC_DRAW_CONFIG.BASE_PARTICLE_SIZE_DIVISOR;
           const arcParticleBaseSize = this.width / STATIC_DRAW_CONFIG.ARC_PARTICLE_SIZE_DIVISOR;
 
+          // Filter out particles with the 'sections' role
+          const maskToRender = this.mask.filter(subMask => subMask.role !== 'sections');
 
-          this.mask.forEach(subMask => {
+          maskToRender.forEach(subMask => {
             subMask.s.forEach(pos => {
               i++;
               // Use pre-calculated pos.xy_factor
@@ -511,6 +571,7 @@
           this.nextMaskCb(); // Process current state in mask display lifecycle.
           this.createNewParticle(); // Generate new particles.
           this.clear(); // Clear canvas for new frame.
+          this.drawStaticSectionsBackground(); // Draw the static "sections" text background.
 
           // 'lighter' makes overlapping colors add up, creating a glowing effect.
           this.engine.globalCompositeOperation = ENGINE_CONFIG.GLOBAL_COMPOSITE_OPERATION_LIGHTER;
@@ -573,15 +634,40 @@
           }
         }
 
+        /**
+         * Selects the next text mask from the pre-rendered `maskCache`.
+         * It then initiates the display lifecycle for this new mask,
+         * typically starting with a fade-in effect.
+         * Includes robustness checks for missing or invalid mask data.
+         */
         nextMask() {
           this.stackId++;
-          if (this.stackId >= this.stack.length) {
+          if (this.stackId >= this.stack.length) { // Loop back to the first mask if at the end.
             this.stackId = 0;
           }
-          this.mask = this.maskCache[this.stackId];
-          if (this.stack[this.stackId].fadeIn) {
+          this.currentMaskData = this.maskCache[this.stackId]; // Get the full data object
+
+          if (!this.currentMaskData) {
+            console.warn("TextSparks: No valid mask data found for stackId", this.stackId, "Mask cache length:", this.maskCache.length);
+            // Ensure dependent properties are initialized to prevent further errors
+            this.mask = []; // Assuming this.mask is expected to be an array for particles
+            this.currentMaskData = { particleMask: [], staticSections: [] }; // Provide a default structure
+            // Optionally, might want to stop further processing in this.draw if no mask,
+            // but for now, preventing the crash is key.
+          } else {
+            this.mask = this.currentMaskData.particleMask;
+            // Ensure staticSections exists, even if empty, on currentMaskData if it's a valid object
+            if (!this.currentMaskData.staticSections) {
+              this.currentMaskData.staticSections = [];
+            }
+          }
+          
+          // Start the display process for the new mask (usually fade-in).
+          // Check if stack[this.stackId] exists to prevent error if maskCache is misaligned with stack
+          if (this.stack[this.stackId] && this.stack[this.stackId].fadeIn) {
             this.nextMaskCb = this.fadeInMask.bind(this);
           } else {
+            // If no fade-in defined, or stack item missing, make it fully visible and move to the next appropriate state.
             this.opa = 1;
             this.afterFadeIn();
           }
