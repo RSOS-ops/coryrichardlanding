@@ -169,6 +169,7 @@
           this.tick = 0;
           this.drawCB = null; // Callback for requestAnimationFrame, bound to this.draw.
           this.mask = null; // Holds the currently active text mask (particle positions).
+          this.currentMaskData = null; // Holds the full data object for the current mask (particleMask + staticSections)
           this.canvas = window.document.querySelector('canvas');
           this.engine = this.canvas.getContext('2d');
           this.maskTick = 0; // Counter for the duration a mask stays visible.
@@ -182,6 +183,35 @@
           this.resize();
           this.fetchData();
           this.buildStackCache();
+        }
+
+        /**
+         * Renders the static "sections" text directly onto the main canvas.
+         * This text serves as a background and is rendered with opacity,
+         * scaled proportionally to the main canvas dimensions.
+         */
+        drawStaticSectionsBackground() {
+          if (!this.currentMaskData || !this.currentMaskData.staticSections || this.currentMaskData.staticSections.length === 0) {
+            return;
+          }
+
+          this.currentMaskData.staticSections.forEach(sectionData => {
+            // Scale font size proportionally to the main canvas width
+            const scaledFontSize = (sectionData.sourceFontSize / sectionData.sourceCanvasWidth) * this.width;
+            
+            // Set font (assuming 'Arial' as used in buildTextMask)
+            this.engine.font = MASK_CANVAS_CONFIG.FONT_STYLE_TEMPLATE(scaledFontSize); // Use existing template
+
+            // Set fill style with 60% opacity
+            this.engine.fillStyle = color(sectionData.hsl, 0.6 * this.opa); // Multiply by global this.opa for fade effects
+
+            // Scale positions proportionally to the main canvas dimensions
+            const mainCanvasX = (sectionData.sourceX / sectionData.sourceCanvasWidth) * this.width;
+            const mainCanvasY = (sectionData.sourceY / sectionData.sourceCanvasHeight) * this.height;
+
+            // Draw text
+            this.engine.fillText(sectionData.text, mainCanvasX, mainCanvasY);
+          });
         }
 
         /**
@@ -239,6 +269,7 @@
          */
         buildTextMask(texts) {
           const mask = [];
+          let staticSectionsData = []; // Initialize for storing static sections data
           const canvasWidth = MASK_CANVAS_CONFIG.WIDTH;
           const canvasHeight = MASK_CANVAS_CONFIG.HEIGHT;
 
@@ -332,6 +363,18 @@
               engine.clearRect(0, 0, canvasWidth, canvasHeight);
               engine.font = font(fSizeSections);
               engine.fillText(textStack.text, currentXSections, ySections);
+
+              // Capture data for static rendering of sections text
+              staticSectionsData.push({
+                text: textStack.text,
+                hsl: textStack.hsl,
+                sourceX: currentXSections,
+                sourceY: ySections,
+                sourceFontSize: fSizeSections,
+                sourceCanvasWidth: canvasWidth,
+                sourceCanvasHeight: canvasHeight
+              });
+
               const textPartWidth = engine.measureText(textStack.text).width;
               // Get pixel data, similar to 'main-name' processing.
               const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
@@ -355,7 +398,7 @@
               currentXSections += textPartWidth;
             });
           }
-          return mask;
+          return { particleMask: mask, staticSections: staticSectionsData };
         }
 
         createNewParticle() {
@@ -511,6 +554,7 @@
           this.nextMaskCb(); // Process current state in mask display lifecycle.
           this.createNewParticle(); // Generate new particles.
           this.clear(); // Clear canvas for new frame.
+          this.drawStaticSectionsBackground(); // Draw the static "sections" text background.
 
           // 'lighter' makes overlapping colors add up, creating a glowing effect.
           this.engine.globalCompositeOperation = ENGINE_CONFIG.GLOBAL_COMPOSITE_OPERATION_LIGHTER;
