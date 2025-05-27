@@ -301,17 +301,20 @@ class TextSparks {
 
     particle.si = 1 + Math.random() * 4 | 0; // Particle size (existing logic)
 
-    // New particle.s calculation for lifetime and speed
-    const s_min_before = 1/720;
-    const s_max_before = 1/320;
-    // The Math.random() here replaces the randomness previously from calculateAverage(r1,r2)
-    const s_before_speedup = s_min_before + Math.random() * (s_max_before - s_min_before);
-    particle.s = s_before_speedup * (4/3); // Apply 1/3 speed-up
+    // New particle.move_speed_factor calculation
+    const s_min_current_speed = 1/360;
+    const s_max_current_speed = 1/160;
+    particle.move_speed_factor = s_min_current_speed + Math.random() * (s_max_current_speed - s_min_current_speed);
+
+    // New particle.lifetime_increment calculation (for 4 to 10 seconds lifetime)
+    const min_lifetime_inc = 1/600; 
+    const max_lifetime_inc = 1/240; 
+    particle.lifetime_increment = min_lifetime_inc + Math.random() * (max_lifetime_inc - min_lifetime_inc);
 
     particle.l = 0; // Lifetime progress (0 to 1)
-    // Movement vector components
-    particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400)); // Faster movement for some particles, uses new particle.s and r1
-    particle.my = Math.sin(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
+    // Movement vector components now use particle.move_speed_factor
+    particle.mx = Math.cos(rad) * (particle.move_speed_factor / (r1 < 0.05 ? 10 : 400));
+    particle.my = Math.sin(rad) * (particle.move_speed_factor / (r1 < 0.05 ? 10 : 400));
     particle.c = this.drawParticle; // Set next behavior to draw
   }
 
@@ -325,7 +328,7 @@ class TextSparks {
       return;
     }
 
-    particle.l += particle.s; // Increment lifetime
+    particle.l += particle.lifetime_increment; // Increment lifetime using the new property
     particle.x += particle.mx; // Move particle
     particle.y += particle.my;
 
