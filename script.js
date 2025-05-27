@@ -134,8 +134,8 @@ class TextSparks {
    */
   buildTextMask(texts) {
     const mask = [];
-    const canvasWidth = 200; // Width of the temporary canvas for mask generation
-    const canvasHeight = 150; // Height of the temporary canvas
+    const canvasWidth = 400; // Increased from 200
+    const canvasHeight = 200; // Increased from 150
 
     const mainNameTexts = texts.filter(t => t.role === 'main-name');
     const sectionsTexts = texts.filter(t => t.role === 'sections');
