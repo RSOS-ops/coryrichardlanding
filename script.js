@@ -173,26 +173,31 @@ class TextSparks {
     // Process 'center-name' texts
     if (centerNameTexts.length > 0) {
       const centerNameString = centerNameTexts.map(t => t.text).join('');
-      const baseCenterFontSize = 40;
+      const baseCenterFontSize = 40 / 3;
       tempEngine.font = font(baseCenterFontSize);
       let metrics = tempEngine.measureText(centerNameString);
       let fSizeCenterName = Math.min(baseCenterFontSize, (canvasWidth * 0.9 / metrics.width) * baseCenterFontSize);
       fSizeCenterName = Math.max(fSizeCenterName, 1); // Ensure font size is at least 1
       const currentFontStyle = font(fSizeCenterName);
       metrics = tempEngine.measureText(centerNameString); // Re-measure
-      const fontWidthCenter = metrics.width;
+      // const fontWidthCenter = metrics.width; // Not needed with textAlign='center'
       const yCenterName = canvasHeight / 2;
-      let currentXCenterName = (canvasWidth - fontWidthCenter) / 2;
+      let currentXCenterName = canvasWidth / 2; // Adjusted for textAlign='center'
+
+      tempEngine.textAlign = 'center'; // Added for horizontal centering
+      tempEngine.textBaseline = 'middle'; // Ensure effective
 
       centerNameTexts.forEach(textStack => {
-        tempEngine.textBaseline = 'middle';
+        // The x position passed to _createTextParticles should be the centered X.
+        // For a single "COMING SOON" item, the loop runs once.
         mask.push(this._createTextParticles(tempEngine, textStack.text, currentFontStyle, currentXCenterName, yCenterName, canvasWidth, canvasHeight, false, textStack.hsl));
-        currentXCenterName += tempEngine.measureText(textStack.text).width;
+        // currentXCenterName += tempEngine.measureText(textStack.text).width; // Removed: Problematic with textAlign='center' and not needed for single item.
       });
     }
 
     // Process 'sections' texts
     if (sectionsTexts.length > 0) {
+      tempEngine.textAlign = 'start'; // Reset textAlign to default for sectionsTexts
       const sectionsString = sectionsTexts.map(t => t.text).join(' '); // Join with spaces for better measurement
       let fSizeMainVal = 30; // Default if mainNameTexts was empty or font not parsed
       if (mainNameTexts.length > 0) {
