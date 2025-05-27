@@ -173,7 +173,7 @@ class TextSparks {
     // Process 'center-name' texts
     if (centerNameTexts.length > 0) {
       const centerNameString = centerNameTexts.map(t => t.text).join('');
-      const baseCenterFontSize = 40 / 3;
+      const baseCenterFontSize = 16;
       tempEngine.font = font(baseCenterFontSize);
       let metrics = tempEngine.measureText(centerNameString);
       let fSizeCenterName = Math.min(baseCenterFontSize, (canvasWidth * 0.9 / metrics.width) * baseCenterFontSize);
@@ -197,7 +197,7 @@ class TextSparks {
 
     // Process 'sections' texts
     if (sectionsTexts.length > 0) {
-      tempEngine.textAlign = 'start'; // Reset textAlign to default for sectionsTexts
+      tempEngine.textAlign = 'left'; // Explicitly set for correct layout of sequential text
       const sectionsString = sectionsTexts.map(t => t.text).join(' '); // Join with spaces for better measurement
       let fSizeMainVal = 30; // Default if mainNameTexts was empty or font not parsed
       if (mainNameTexts.length > 0) {
