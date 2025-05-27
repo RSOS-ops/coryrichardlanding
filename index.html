@@ -257,13 +257,13 @@
             fSizeSections = Math.max(fSizeSections, 1);
             engine.font = font(fSizeSections);
             const fontWidthSections = engine.measureText(sectionsString).width;
-            const ySections = canvasHeight * 0.75; // Adjusted for better centering
+            const ySections = canvasHeight - 10; // Position 10px from the bottom
             let currentXSections = (canvasWidth - fontWidthSections) / 2;
 
             sectionsTexts.forEach(textStack => {
               engine.clearRect(0, 0, canvasWidth, canvasHeight);
               engine.font = font(fSizeSections);
-              engine.textBaseline = 'middle'; // Added for better centering
+              engine.textBaseline = 'bottom'; // Position 10px from the bottom
               engine.fillText(textStack.text, currentXSections, ySections);
               engine.strokeStyle = '#FFFFFF'; // White stroke color
               engine.lineWidth = 1;           // 1px line width
