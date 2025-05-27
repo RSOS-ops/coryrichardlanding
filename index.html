@@ -340,13 +340,13 @@
                 return;
               }
 
-              pos.o += step;
+              pos.o += step; // Animation re-enabled
               const opa = Math.max(0, Math.sin(pos.o * Math.PI * 2));
-              const padding = opa * baseParticleWidth * 1.5;
+              const padding = opa * baseParticleWidth * 0.5; // Glow size reduced
 
               this.engine.fillStyle = color(subMask.hsl, this.opa * opa * 0.2);
 
-              if (pos.t < 0.5) {
+              if (pos.t < 0.5) { // This draws a circular glow
                 this.engine.beginPath();
                 this.engine.arc(
                   pos.x * this.width,
@@ -356,7 +356,7 @@
                   Math.PI * 2
                 );
                 this.engine.fill();
-              } else {
+              } else { // This draws a rectangular glow
                 this.engine.fillRect(
                   pos.x * this.width - padding,
                   pos.y * this.height - padding,
