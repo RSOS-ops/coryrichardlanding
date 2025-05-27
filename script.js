@@ -173,7 +173,7 @@ class TextSparks {
     // Process 'center-name' texts
     if (centerNameTexts.length > 0) {
       const centerNameString = centerNameTexts.map(t => t.text).join('');
-      const baseCenterFontSize = 16;
+      const baseCenterFontSize = 96 / 5;
       tempEngine.font = font(baseCenterFontSize);
       let metrics = tempEngine.measureText(centerNameString);
       let fSizeCenterName = Math.min(baseCenterFontSize, (canvasWidth * 0.9 / metrics.width) * baseCenterFontSize);
