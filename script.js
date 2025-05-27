@@ -22,10 +22,19 @@ class TextSparks {
     this.maskTick = 0; // Counter for current mask display duration
     this.nextMaskCb = this.nextMask.bind(this); // Callback for mask state transitions
     this.maskCache = []; // Cache for pre-built text masks
+    this.permanentTextConfig = null; // Initialize permanentTextConfig
+    this.permanentTextMask = null; // Initialize permanentTextMask
 
     this.resize(); // Adjust canvas to window size
     this.fetchData(); // Load text data from DOM
     this.buildStackCache(); // Pre-render all text masks
+
+    if (this.permanentTextConfig) {
+      // The buildTextMask function expects an array of text items.
+      // this.permanentTextConfig currently stores a single text item object.
+      // So, wrap it in an array.
+      this.permanentTextMask = this.buildTextMask([this.permanentTextConfig]);
+    }
     this.particleMap = new Map(); // Holds active animated particles
   }
 
@@ -39,26 +48,69 @@ class TextSparks {
   }
 
   /**
+   * Draws the permanent text (e.g., "COMING SOON") using its pre-generated mask.
+   * @param {number} customOpacity - The base opacity to apply to the text.
+   */
+  drawPermanentText(customOpacity = 1) {
+    if (!this.permanentTextMask || this.permanentTextMask.length === 0) {
+      return;
+    }
+
+    this.permanentTextMask.forEach(subMask => {
+      if (!subMask || !subMask.s) return;
+
+      subMask.s.forEach(pos => {
+        // Assuming 'center-name' (permanent text) is not 'isSectionText' for particle width
+        const baseParticleWidth = this.width / 150; 
+
+        // Opacity logic:
+        // pos.t is a random value (0-1) associated with each particle point from buildTextMask.
+        const particleOpacityVariation = (pos.t !== undefined ? pos.t : 1); // Default to 1 if t is not there
+        // A slight cosine variation can make it shimmer
+        const shimmer = (1 + Math.cos(pos.x * 5 + pos.y * 5 + this.tick / 10)) / 2;
+        const finalOpacity = customOpacity * particleOpacityVariation * shimmer * 0.7; // Adjust 0.7 for base visibility
+
+        this.engine.fillStyle = color(subMask.hsl, finalOpacity);
+        this.engine.fillRect(
+          pos.x * this.width,
+          pos.y * this.height,
+          baseParticleWidth,
+          baseParticleWidth
+        );
+      });
+    });
+  }
+
+  /**
    * Fetches text data and animation parameters from DOM elements.
    */
   fetchData() {
     this.stackId = -1; // Index of the current text stack
     this.stack = [...document.querySelectorAll('div > ul')].map(ul => {
+      const allLiData = [...ul.querySelectorAll('li')].map(li => {
+        const textData = {
+          text: li.innerHTML.trim(),
+          hsl: {
+            h: li.hasAttribute('data-hue') ? Number(li.getAttribute('data-hue')) : 0,
+            s: li.hasAttribute('data-saturation') ? Number(li.getAttribute('data-saturation')) : 100,
+            l: li.hasAttribute('data-lightness') ? Number(li.getAttribute('data-lightness')) : 50
+          },
+          role: li.getAttribute('data-role') || ''
+        };
+        if (textData.role === 'center-name') {
+          this.permanentTextConfig = textData; // Store it
+          return null; // Mark for filtering
+        }
+        return textData; // Keep for the stack
+      });
+      
+      const filteredLiData = allLiData.filter(data => data !== null);
+
       return {
         ticks: 0.05 * (ul.hasAttribute('data-time') ? Number(ul.getAttribute('data-time')) : 0), // Duration to display mask
         fadeIn: ul.hasAttribute('data-fade-in') ? 50 / Number(ul.getAttribute('data-fade-in')) : 0, // Fade-in speed
         fadeOut: ul.hasAttribute('data-fade-out') ? 50 / Number(ul.getAttribute('data-fade-out')) : 0, // Fade-out speed
-        texts: [...ul.querySelectorAll('li')].map(li => {
-          return {
-            text: li.innerHTML.trim(),
-            hsl: {
-              h: li.hasAttribute('data-hue') ? Number(li.getAttribute('data-hue')) : 0,
-              s: li.hasAttribute('data-saturation') ? Number(li.getAttribute('data-saturation')) : 100,
-              l: li.hasAttribute('data-lightness') ? Number(li.getAttribute('data-lightness')) : 50
-            },
-            role: li.getAttribute('data-role') || '' // Role of the text (e.g., 'main-name', 'sections')
-          };
-        })
+        texts: filteredLiData // Assign the filtered list to the stack
       };
     });
   }
@@ -241,12 +293,14 @@ class TextSparks {
    * Creates new animated particles based on the current text mask.
    */
   createNewParticle() {
-    if (!this.mask || this.mask.length === 0) return; // Don't create particles if no mask
+    if (!this.permanentTextMask || this.permanentTextMask.length === 0) {
+      return; // Don't create particles if permanent text mask isn't available
+    }
 
     for (let i = 0; i < newParticlesPerFrame; i++) {
-      // Pick a random sub-mask (character/section)
-      const subMaskIndex = Math.random() * this.mask.length | 0;
-      const subMask = this.mask[subMaskIndex];
+      // Pick a random sub-mask (character/section) from the permanent text mask
+      // this.permanentTextMask is an array of subMasks, for "COMING SOON" it's likely just one.
+      const subMask = this.permanentTextMask[Math.random() * this.permanentTextMask.length | 0];
 
       if (!subMask || !subMask.s || subMask.s.length === 0) continue; // Skip if subMask is empty
 
@@ -426,10 +480,11 @@ class TextSparks {
 
     this.createNewParticle(); // Generate new animated particles
     this.clear(); // Clear canvas
+    this.drawPermanentText(); // Draw the "COMING SOON" text
 
     // Use 'lighter' composite operation for additive blending of colors (glow effects)
     this.engine.globalCompositeOperation = 'lighter';
-    this.drawStatic(); // Draw the static, glowing text mask
+    this.drawStatic(); // Draw the static, glowing text mask for the main animation
     this.renderParticles(); // Draw and update animated particles
     this.engine.globalCompositeOperation = 'source-over'; // Reset composite operation
 
