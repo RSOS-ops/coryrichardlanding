@@ -182,7 +182,8 @@
                     x: (pixelIndex % canvasWidth) / canvasWidth,
                     y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
                     o: Math.random(),
-                    t: Math.random()
+                    t: Math.random(),
+                    isSectionText: false
                   });
                 }
               }
@@ -220,12 +221,15 @@
               for (let i = 0; i < data.data.length; i += 4) {
                 if (data.data[i + 3] > 0) {
                   const pixelIndex = i / 4;
-                  subStack.push({
+                  const particleData = {
                     x: (pixelIndex % canvasWidth) / canvasWidth,
                     y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
                     o: Math.random(),
-                    t: Math.random()
-                  });
+                    t: Math.random(),
+                    isSectionText: true
+                  };
+                  subStack.push(particleData);
+                  subStack.push(particleData); // Push the same data again
                 }
               }
               mask.push({ hsl: textStack.hsl, s: subStack });
@@ -316,12 +320,20 @@
           this.mask.forEach(subMask => {
             subMask.s.forEach(pos => {
               i++;
+
+              let baseParticleWidth;
+              if (pos.isSectionText) {
+                baseParticleWidth = this.width / 250;
+              } else {
+                baseParticleWidth = this.width / 150;
+              }
+
               this.engine.fillStyle = color(subMask.hsl, (1 + Math.cos(pos.x * 5 * pos.y * 5 + this.tick / 10)) / 2 * this.opa * pos.t * 0.5);
               this.engine.fillRect(
                 pos.x * this.width,
                 pos.y * this.height,
-                this.width / 100,
-                this.width / 100
+                baseParticleWidth,
+                baseParticleWidth
               );
 
               if (i % 2) {
@@ -330,7 +342,7 @@
 
               pos.o += step;
               const opa = Math.max(0, Math.sin(pos.o * Math.PI * 2));
-              const padding = opa * this.width / 200;
+              const padding = opa * baseParticleWidth * 1.5;
 
               this.engine.fillStyle = color(subMask.hsl, this.opa * opa * 0.2);
 
@@ -339,7 +351,7 @@
                 this.engine.arc(
                   pos.x * this.width,
                   pos.y * this.height,
-                  this.width / 500 + padding,
+                  (baseParticleWidth / 2) + padding,
                   0,
                   Math.PI * 2
                 );
@@ -348,8 +360,8 @@
                 this.engine.fillRect(
                   pos.x * this.width - padding,
                   pos.y * this.height - padding,
-                  this.width / 100 + padding * 2,
-                  this.width / 100 + padding * 2
+                  baseParticleWidth + padding * 2,
+                  baseParticleWidth + padding * 2
                 );
               }
             });
