@@ -168,12 +168,13 @@
             engine.font = font(fSizeMain);
             mMain = engine.measureText(mainNameString);
             const fontWidthMain = mMain.width;
-            const yMainName = (canvasHeight / 4) + (fSizeMain / 3);
+            const yMainName = canvasHeight / 2; // Adjusted for better centering
             let currentXMainName = (canvasWidth - fontWidthMain) / 2;
 
             mainNameTexts.forEach(textStack => {
               engine.clearRect(0, 0, canvasWidth, canvasHeight);
               engine.font = font(fSizeMain);
+              engine.textBaseline = 'middle'; // Added for better centering
               engine.fillText(textStack.text, currentXMainName, yMainName);
               engine.strokeStyle = '#FFFFFF'; // White stroke color
               engine.lineWidth = 1;           // 1px line width
@@ -214,12 +215,13 @@
             fSizeSections = Math.max(fSizeSections, 1);
             engine.font = font(fSizeSections);
             const fontWidthSections = engine.measureText(sectionsString).width;
-            const ySections = (canvasHeight * 0.75) + (fSizeSections / 3);
+            const ySections = canvasHeight * 0.75; // Adjusted for better centering
             let currentXSections = (canvasWidth - fontWidthSections) / 2;
 
             sectionsTexts.forEach(textStack => {
               engine.clearRect(0, 0, canvasWidth, canvasHeight);
               engine.font = font(fSizeSections);
+              engine.textBaseline = 'middle'; // Added for better centering
               engine.fillText(textStack.text, currentXSections, ySections);
               engine.strokeStyle = '#FFFFFF'; // White stroke color
               engine.lineWidth = 1;           // 1px line width
@@ -436,6 +438,7 @@
             this.stackId = 0;
           }
           this.mask = this.maskCache[this.stackId];
+          this.particleMap.clear(); // Clear existing animated particles
           if (this.stack[this.stackId].fadeIn) {
             this.nextMaskCb = this.fadeInMask.bind(this);
           } else {
