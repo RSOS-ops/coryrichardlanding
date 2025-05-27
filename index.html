@@ -172,6 +172,9 @@
               engine.clearRect(0, 0, canvasWidth, canvasHeight);
               engine.font = font(fSizeMain);
               engine.fillText(textStack.text, currentXMainName, yMainName);
+              engine.strokeStyle = '#FFFFFF'; // White stroke color
+              engine.lineWidth = 1;           // 1px line width
+              engine.strokeText(textStack.text, currentXMainName, yMainName); // Draw the stroke
               const textPartWidth = engine.measureText(textStack.text).width;
               const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
               const subStack = [];
@@ -215,6 +218,9 @@
               engine.clearRect(0, 0, canvasWidth, canvasHeight);
               engine.font = font(fSizeSections);
               engine.fillText(textStack.text, currentXSections, ySections);
+              engine.strokeStyle = '#FFFFFF'; // White stroke color
+              engine.lineWidth = 1;           // 1px line width
+              engine.strokeText(textStack.text, currentXSections, ySections); // Draw the stroke
               const textPartWidth = engine.measureText(textStack.text).width;
               const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
               const subStack = [];
