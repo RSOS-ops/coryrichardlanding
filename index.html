@@ -72,7 +72,7 @@
         <li data-hue="45" data-role="sections">Tech</li>
       </ul>
       <ul data-time="6000" data-fade-in="2500" data-fade-out="2500">
-        <li data-role="main-name" data-hue="0" data-saturation="0" data-lightness="100">COMING SOON</li>
+        <li data-role="center-name" data-hue="0" data-saturation="0" data-lightness="100">COMING SOON</li>
       </ul>
     </div>
     <canvas></canvas>
@@ -150,6 +150,7 @@
 
           const mainNameTexts = texts.filter(t => t.role === 'main-name');
           const sectionsTexts = texts.filter(t => t.role === 'sections');
+          const centerNameTexts = texts.filter(t => t.role === 'center-name');
 
           const canvas = document.createElement('canvas');
           const engine = canvas.getContext('2d');
@@ -168,13 +169,13 @@
             engine.font = font(fSizeMain);
             mMain = engine.measureText(mainNameString);
             const fontWidthMain = mMain.width;
-            const yMainName = canvasHeight / 2; // Adjusted for better centering
+            const yMainName = canvasHeight / 4; // Adjusted for new layout
             let currentXMainName = (canvasWidth - fontWidthMain) / 2;
 
             mainNameTexts.forEach(textStack => {
               engine.clearRect(0, 0, canvasWidth, canvasHeight);
               engine.font = font(fSizeMain);
-              engine.textBaseline = 'middle'; // Added for better centering
+              engine.textBaseline = 'top'; // Changed for new layout
               engine.fillText(textStack.text, currentXMainName, yMainName);
               engine.strokeStyle = '#FFFFFF'; // White stroke color
               engine.lineWidth = 1;           // 1px line width
@@ -196,6 +197,49 @@
               }
               mask.push({ hsl: textStack.hsl, s: subStack });
               currentXMainName += textPartWidth;
+            });
+          }
+
+          if (centerNameTexts.length > 0) {
+            const centerNameString = centerNameTexts.map(t => t.text).join('');
+            const baseCenterFontSize = 40; 
+            engine.font = font(baseCenterFontSize);
+            let mCenter = engine.measureText(centerNameString);
+            let fSizeCenterName = Math.min(baseCenterFontSize, (canvasWidth * 0.9 / mCenter.width) * baseCenterFontSize);
+            fSizeCenterName = Math.max(fSizeCenterName, 1); 
+            engine.font = font(fSizeCenterName);
+            mCenter = engine.measureText(centerNameString); 
+            const fontWidthCenter = mCenter.width;
+            const yCenterName = canvasHeight / 2;
+            let currentXCenterName = (canvasWidth - fontWidthCenter) / 2;
+
+            centerNameTexts.forEach(textStack => {
+              engine.clearRect(0, 0, canvasWidth, canvasHeight);
+              engine.font = font(fSizeCenterName); 
+              engine.textBaseline = 'middle'; 
+              engine.fillText(textStack.text, currentXCenterName, yCenterName);
+
+              engine.strokeStyle = '#FFFFFF';
+              engine.lineWidth = 1;
+              engine.strokeText(textStack.text, currentXCenterName, yCenterName);
+
+              const textPartWidth = engine.measureText(textStack.text).width; 
+              const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
+              const subStack = [];
+              for (let i = 0; i < data.data.length; i += 4) {
+                if (data.data[i + 3] > 0) {
+                  const pixelIndex = i / 4;
+                  subStack.push({
+                    x: (pixelIndex % canvasWidth) / canvasWidth,
+                    y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
+                    o: Math.random(),
+                    t: Math.random(),
+                    isSectionText: false 
+                  });
+                }
+              }
+              mask.push({ hsl: textStack.hsl, s: subStack });
+              currentXCenterName += textPartWidth;
             });
           }
 
