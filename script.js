@@ -209,15 +209,23 @@ class TextSparks {
             fSizeMainVal = parseFloat(fontMatch[1]);
           }
       }
-      const baseSectionsFontSize = fSizeMainVal * 0.6;
-      tempEngine.font = font(baseSectionsFontSize);
-      let metrics = tempEngine.measureText(sectionsString);
-      let fSizeSections = Math.min(baseSectionsFontSize, (canvasWidth * 0.9 / metrics.width) * baseSectionsFontSize);
-      fSizeSections = Math.max(fSizeSections, 1); // Ensure font size is at least 1
+
+      // New font size logic for sectionsTexts
+      const targetWidth = canvasWidth * (3 / 4);
+      const baseFontSizeForMeasurement = fSizeMainVal; // Using fSizeMainVal as the base for measurement
+      tempEngine.font = font(baseFontSizeForMeasurement);
+      const initialMetrics = tempEngine.measureText(sectionsString);
+      const initialWidth = initialMetrics.width;
+
+      let fSizeSections = (targetWidth / initialWidth) * baseFontSizeForMeasurement;
+      fSizeSections = Math.max(fSizeSections, 1); // Ensure font size is at least 1px
+
       const currentFontStyle = font(fSizeSections);
-      metrics = tempEngine.measureText(sectionsString); // Re-measure
-      const fontWidthSections = metrics.width;
-      const ySections = canvasHeight - 10;
+      tempEngine.font = currentFontStyle; // Apply the final calculated font for drawing and final measurement
+      let metrics = tempEngine.measureText(sectionsString); // Re-measure with the new fSizeSections
+      let fontWidthSections = metrics.width; // Update fontWidthSections with the new width
+
+      let ySections = canvasHeight - 2; // Adjusted to be closer to the bottom
       let currentXSections = (canvasWidth - fontWidthSections) / 2;
 
       sectionsTexts.forEach(textStack => {
