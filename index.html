@@ -54,7 +54,7 @@
   </head>
   <body>
     <div>
-      <ul data-time="3000">
+      <ul data-time="12000" data-fade-in="5000" data-fade-out="5000">
         <li data-hue="197" data-role="main-name">C</li>
         <li data-hue="0" data-role="main-name">O</li>
         <li data-hue="197" data-role="main-name">R</li>
@@ -289,7 +289,7 @@
           particle.x += (-0.5 + r1) / 300;
           particle.y += (-0.5 + r2) / 300;
           particle.si = 1 + Math.random() * 4 | 0;
-          particle.s = 0.003 + this.randFromList(r1, r2) / 10;
+          particle.s = (0.003 + this.randFromList(r1, r2) / 10) / 4;
           particle.l = 0;
           particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
           particle.my = Math.sin(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
@@ -321,7 +321,7 @@
 
         drawStatic() {
           let i = 0;
-          const step = 0.01;
+          const step = 0.01 / 4;
 
           this.mask.forEach(subMask => {
             subMask.s.forEach(pos => {
