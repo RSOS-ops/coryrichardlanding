@@ -381,36 +381,36 @@ class TextSparks {
           baseParticleWidth
         );
 
-        // Skip glow effect for every other particle for performance/visual variety
-        if (i % 2) {
-          return;
-        }
-
-        pos.o += step; // Increment animation offset for glow effect
-        const glowOpacity = Math.max(0, Math.sin(pos.o * Math.PI * 2));
-        const padding = glowOpacity * baseParticleWidth * 0.5; // Glow size
-
-        this.engine.fillStyle = color(subMask.hsl, this.opa * glowOpacity * 0.2); // Glow color and opacity
-
-        // Draw either a circular or rectangular glow based on random factor 't'
-        if (pos.t < 0.5) { // Circular glow
-          this.engine.beginPath();
-          this.engine.arc(
-            pos.x * this.width,
-            pos.y * this.height,
-            (baseParticleWidth / 2) + padding,
-            0,
-            Math.PI * 2
-          );
-          this.engine.fill();
-        } else { // Rectangular glow
-          this.engine.fillRect(
-            pos.x * this.width - padding,
-            pos.y * this.height - padding,
-            baseParticleWidth + padding * 2,
-            baseParticleWidth + padding * 2
-          );
-        }
+        // // Skip glow effect for every other particle for performance/visual variety
+        // if (i % 2) {
+        //   return;
+        // }
+        //
+        // pos.o += step; // Increment animation offset for glow effect
+        // const glowOpacity = Math.max(0, Math.sin(pos.o * Math.PI * 2));
+        // const padding = glowOpacity * baseParticleWidth * 0.5; // Glow size
+        //
+        // this.engine.fillStyle = color(subMask.hsl, this.opa * glowOpacity * 0.2); // Glow color and opacity
+        //
+        // // Draw either a circular or rectangular glow based on random factor 't'
+        // if (pos.t < 0.5) { // Circular glow
+        //   this.engine.beginPath();
+        //   this.engine.arc(
+        //     pos.x * this.width,
+        //     pos.y * this.height,
+        //     (baseParticleWidth / 2) + padding,
+        //     0,
+        //     Math.PI * 2
+        //   );
+        //   this.engine.fill();
+        // } else { // Rectangular glow
+        //   this.engine.fillRect(
+        //     pos.x * this.width - padding,
+        //     pos.y * this.height - padding,
+        //     baseParticleWidth + padding * 2,
+        //     baseParticleWidth + padding * 2
+        //   );
+        // }
       });
     });
   }
