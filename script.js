@@ -286,33 +286,31 @@ class TextSparks {
   }
 
   /**
-   * Calculates the average of a list of numbers.
-   * @param  {...number} rands - Numbers to average.
-   * @returns {number} The average.
-   */
-  calculateAverage(...rands) {
-    return rands.reduce((acc, rand) => acc + rand, 0) / rands.length;
-  }
-
-  /**
    * Initializes a newly created particle's properties for animation.
    * @param {object} particle - The particle object to prepare.
    */
   prepareParticle(particle) {
-    const r1 = Math.random();
-    const r2 = Math.random();
-    const r3 = Math.random();
+    const r1 = Math.random(); // For particle.mx/my conditional speed
+    // r2 is no longer needed as calculateAverage is removed
+    const r3 = Math.random(); // For rad
     const rad = r3 * Math.PI * 2; // Random angle
 
     // Slightly offset initial position for a more dynamic feel
-    particle.x += (-0.5 + r1) / 300;
-    particle.y += (-0.5 + r2) / 300;
+    particle.x += (-0.5 + Math.random()) / 300; // Using fresh Math.random()
+    particle.y += (-0.5 + Math.random()) / 300; // Using fresh Math.random()
 
-    particle.si = 1 + Math.random() * 4 | 0; // Particle size
-    particle.s = (0.003 + this.calculateAverage(r1, r2) / 10) / 4; // Particle speed/lifetime factor
+    particle.si = 1 + Math.random() * 4 | 0; // Particle size (existing logic)
+
+    // New particle.s calculation for lifetime and speed
+    const s_min_before = 1/720;
+    const s_max_before = 1/320;
+    // The Math.random() here replaces the randomness previously from calculateAverage(r1,r2)
+    const s_before_speedup = s_min_before + Math.random() * (s_max_before - s_min_before);
+    particle.s = s_before_speedup * (4/3); // Apply 1/3 speed-up
+
     particle.l = 0; // Lifetime progress (0 to 1)
     // Movement vector components
-    particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400)); // Faster movement for some particles
+    particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400)); // Faster movement for some particles, uses new particle.s and r1
     particle.my = Math.sin(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
     particle.c = this.drawParticle; // Set next behavior to draw
   }
