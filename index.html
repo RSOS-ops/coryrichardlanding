@@ -167,7 +167,7 @@
             engine.font = font(fSizeMain);
             mMain = engine.measureText(mainNameString);
             const fontWidthMain = mMain.width;
-            const yMainName = canvasHeight / 4; // Adjusted for new layout
+            const yMainName = 10; // Position 10px from the top of the temporary canvas
             let currentXMainName = (canvasWidth - fontWidthMain) / 2;
 
             mainNameTexts.forEach(textStack => {
