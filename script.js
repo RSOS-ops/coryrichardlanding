@@ -293,28 +293,49 @@ class TextSparks {
    * Creates new animated particles based on the current text mask.
    */
   createNewParticle() {
-    if (!this.permanentTextMask || this.permanentTextMask.length === 0) {
-      return; // Don't create particles if permanent text mask isn't available
+    // Generate from permanent text (e.g., "COMING SOON")
+    if (this.permanentTextMask && this.permanentTextMask.length > 0) {
+      for (let i = 0; i < newParticlesPerFrame; i++) {
+        // Pick a random sub-mask (character/section) from the permanent text mask
+        // this.permanentTextMask is an array of subMasks, for "COMING SOON" it's likely just one.
+        const subMask = this.permanentTextMask[Math.random() * this.permanentTextMask.length | 0];
+
+        if (!subMask || !subMask.s || subMask.s.length === 0) continue; // Skip if subMask is empty
+        
+        // Pick a random particle position from the sub-mask
+        const maskElement = subMask.s[Math.random() * subMask.s.length | 0];
+
+        if (maskElement) {
+          const particle = {
+            x: maskElement.x, // Initial position from mask
+            y: maskElement.y,
+            hsl: subMask.hsl, // Color from mask (permanent text HSL)
+            c: this.prepareParticle // Initial behavior function for the particle
+          };
+          this.particleMap.set(particle, particle); // Add to active particles
+        }
+      }
     }
 
-    for (let i = 0; i < newParticlesPerFrame; i++) {
-      // Pick a random sub-mask (character/section) from the permanent text mask
-      // this.permanentTextMask is an array of subMasks, for "COMING SOON" it's likely just one.
-      const subMask = this.permanentTextMask[Math.random() * this.permanentTextMask.length | 0];
+    // Generate from active cycling text
+    if (this.mask && this.mask.length > 0 && this.opa > 0.1) {
+      for (let i = 0; i < newParticlesPerFrame; i++) {
+        const subMask = this.mask[Math.random() * this.mask.length | 0];
 
-      if (!subMask || !subMask.s || subMask.s.length === 0) continue; // Skip if subMask is empty
+        if (!subMask || !subMask.s || subMask.s.length === 0) continue; // Skip if subMask is empty
 
-      // Pick a random particle position from the sub-mask
-      const maskElement = subMask.s[Math.random() * subMask.s.length | 0];
+        // Pick a random particle position from the sub-mask
+        const maskElement = subMask.s[Math.random() * subMask.s.length | 0];
 
-      if (maskElement) {
-        const particle = {
-          x: maskElement.x, // Initial position from mask
-          y: maskElement.y,
-          hsl: subMask.hsl, // Color from mask
-          c: this.prepareParticle // Initial behavior function for the particle
-        };
-        this.particleMap.set(particle, particle); // Add to active particles
+        if (maskElement) {
+          const particle = {
+            x: maskElement.x, // Initial position from mask
+            y: maskElement.y,
+            hsl: subMask.hsl, // Color from mask (cycling text HSL)
+            c: this.prepareParticle // Initial behavior function for the particle
+          };
+          this.particleMap.set(particle, particle); // Add to active particles
+        }
       }
     }
   }
