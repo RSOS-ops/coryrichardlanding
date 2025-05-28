@@ -295,7 +295,7 @@ class TextSparks {
   createNewParticle() {
     // Generate from permanent text (e.g., "COMING SOON")
     if (this.permanentTextMask && this.permanentTextMask.length > 0) {
-      for (let i = 0; i < newParticlesPerFrame; i++) {
+      for (let i = 0; i < Math.floor(newParticlesPerFrame * 0.25); i++) { // Reduced particle count by 75%
         // Pick a random sub-mask (character/section) from the permanent text mask
         // this.permanentTextMask is an array of subMasks, for "COMING SOON" it's likely just one.
         const subMask = this.permanentTextMask[Math.random() * this.permanentTextMask.length | 0];
@@ -501,7 +501,7 @@ class TextSparks {
 
     this.createNewParticle(); // Generate new animated particles
     this.clear(); // Clear canvas
-    this.drawPermanentText(); // Draw the "COMING SOON" text
+    this.drawPermanentText(0.4); // Draw the "COMING SOON" text with 40% base opacity
 
     // Use 'lighter' composite operation for additive blending of colors (glow effects)
     this.engine.globalCompositeOperation = 'lighter';
