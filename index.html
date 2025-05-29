@@ -1,435 +1,294 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cory Richard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+    <title>WebGL Animation</title>
     <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-      }
-      body {
-        background-color: black;
-        color: white;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-        font-family: 'Roboto', sans-serif;
-      }
-      canvas {
-        width: 100vw;
-        height: 100vh;
-      }
-      h1 {
-        font-size: 4em;
-        margin-bottom: 20px;
-        text-align: center;
-      }
-      img {
-        display: block;
-        margin-left: auto;
-        margin-right: auto;
-        max-width: 40%;
-        height: auto;
-        border: 3px solid black;
-      }
-      #sections-container {
-        display: flex;
-        justify-content: space-around;
-        width: 66%;
-        margin-top: 20px;
-      }
-      .section {
-        padding: 10px;
-        font-size: 2em;
-      }
-      div > ul[data-time] {
-        display: none; /* This hides the list used for text animation initially */
-      }
+        body {
+            background-color: #000;
+            margin: 0;
+            overflow: hidden;
+            background-repeat: no-repeat;
+        }
+        canvas {
+            display: block; /* Fixes potential scrollbar issue */
+        }
     </style>
-  </head>
-  <body>
-    <div>
-      <ul data-time="3000">
-        <li data-hue="197" data-role="main-name">C</li>
-        <li data-hue="0" data-role="main-name">O</li>
-        <li data-hue="197" data-role="main-name">R</li>
-        <li data-hue="197" data-role="main-name">Y</li>
-        <li data-hue="45" data-role="main-name">R</li>
-        <li data-hue="197" data-role="main-name">I</li>
-        <li data-hue="0" data-role="main-name">C</li>
-        <li data-hue="197" data-role="main-name">H</li>
-        <li data-hue="197" data-role="main-name">A</li>
-        <li data-hue="45" data-role="main-name">R</li>
-        <li data-hue="197" data-role="main-name">D</li>
-        <li data-hue="197" data-role="sections">DJ</li>
-        <li data-hue="0" data-role="sections">Music</li>
-        <li data-hue="197" data-role="sections">Visual</li>
-        <li data-hue="45" data-role="sections">Tech</li>
-      </ul>
-    </div>
-    <canvas></canvas>
-    <div id="sections-container" style="display: none;">
-      <div class="section">DJ</div>
-      <div class="section">Music</div>
-      <div class="section">Visual</div>
-      <div class="section">Tech</div>
-    </div>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
     <script>
-      const newParticlesPerFrame = 50;
+        var canvas = document.getElementById("canvas");
 
-      const color = (hsl, o) => {
-        return `hsla(${hsl.h | 0}, ${hsl.s}%, ${hsl.l}%, ${o})`;
-      };
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
-      class TextSparks {
-        constructor() {
-          this.opa = 0;
-          this.tick = 0;
-          this.drawCB = null;
-          this.mask = null;
-          this.canvas = window.document.querySelector('canvas');
-          this.engine = this.canvas.getContext('2d');
-          this.maskTick = 0;
-          this.nextMaskCb = this.nextMask.bind(this);
-          this.maskCache = [];
-
-          this.resize();
-          this.fetchData();
-          this.buildStackCache();
-          this.particleMap = new Map();
+        // Initialize the GL context
+        var gl = canvas.getContext('webgl');
+        if (!gl) {
+            console.error("Unable to initialize WebGL.");
+            document.body.innerHTML = "Sorry, your browser does not support WebGL, or it is disabled.";
         }
 
-        buildStackCache() {
-          this.maskCache = this.stack.map((stack) => {
-            return this.buildTextMask(stack.texts);
-          });
-        }
+        if (gl) { // Only run WebGL code if context was successfully obtained
+            //Time
+            var time = 0.0;
 
-        fetchData() {
-          this.stackId = -1;
-          this.stack = [...document.querySelectorAll('div > ul')].map(ul => {
-            return {
-              ticks: 0.05 * (ul.hasAttribute('data-time') ? ul.getAttribute('data-time') : 0),
-              fadeIn: ul.hasAttribute('data-fade-in') ? 50 / Number(ul.getAttribute('data-fade-in')) : 0,
-              fadeOut: ul.hasAttribute('data-fade-out') ? 50 / Number(ul.getAttribute('data-fade-out')) : 0,
-              texts: [...ul.querySelectorAll('li')].map(li => {
-                return {
-                  text: li.innerHTML.trim(),
-                  hsl: {
-                    h: li.hasAttribute('data-hue') ? Number(li.getAttribute('data-hue')) : 0,
-                    s: li.hasAttribute('data-saturation') ? Number(li.getAttribute('data-saturation')) : 100,
-                    l: li.hasAttribute('data-lightness') ? Number(li.getAttribute('data-lightness')) : 50
-                  },
-                  role: li.getAttribute('data-role') || ''
-                };
-              })
-            };
-          });
-        }
+            //************** Shader sources **************
 
-        resize() {
-          this.width = window.innerWidth;
-          this.height = window.innerHeight;
-          this.canvas.setAttribute('width', this.width);
-          this.canvas.setAttribute('height', this.height);
-        }
+            var vertexSource = `
+attribute vec2 position;
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+}
+`;
 
-        buildTextMask(texts) {
-          const mask = [];
-          const canvasWidth = 200;
-          const canvasHeight = 150;
+            var fragmentSource = `
+precision highp float;
 
-          const mainNameTexts = texts.filter(t => t.role === 'main-name');
-          const sectionsTexts = texts.filter(t => t.role === 'sections');
+uniform float width;
+uniform float height;
+vec2 resolution = vec2(width, height);
 
-          const canvas = document.createElement('canvas');
-          const engine = canvas.getContext('2d');
-          canvas.setAttribute('width', canvasWidth);
-          canvas.setAttribute('height', canvasHeight);
+uniform float time;
 
-          const font = (size) => `bold ${size}px Arial`;
-          engine.fillStyle = '#000';
+//Base values modified with depth later
+float intensity = 1.0;
+float radius = 0.05;
 
-          if (mainNameTexts.length > 0) {
-            const mainNameString = mainNameTexts.map(t => t.text).join('');
-            const baseMainFontSize = 40;
-            engine.font = font(baseMainFontSize);
-            let mMain = engine.measureText(mainNameString);
-            let fSizeMain = Math.min(baseMainFontSize, (canvasWidth * 0.9 / mMain.width) * baseMainFontSize);
-            engine.font = font(fSizeMain);
-            mMain = engine.measureText(mainNameString);
-            const fontWidthMain = mMain.width;
-            const yMainName = (canvasHeight / 4) + (fSizeMain / 3);
-            let currentXMainName = (canvasWidth - fontWidthMain) / 2;
+//Distance functions from
+//https://www.iquilezles.org/www/articles/distfunctions2d/distfunctions2d.htm
+float triangleDist(vec2 p){
+    const float k = sqrt(3.0);
+  p.x = abs(p.x) - 1.0;
+  p.y = p.y + 1.0/k;
+  if( p.x+k*p.y>0.0 ) p=vec2(p.x-k*p.y,-k*p.x-p.y)/2.0;
+  p.x -= clamp( p.x, -2.0, 0.0 );
+  return -length(p)*sign(p.y);
+}
 
-            mainNameTexts.forEach(textStack => {
-              engine.clearRect(0, 0, canvasWidth, canvasHeight);
-              engine.font = font(fSizeMain);
-              engine.fillText(textStack.text, currentXMainName, yMainName);
-              const textPartWidth = engine.measureText(textStack.text).width;
-              const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
-              const subStack = [];
-              for (let i = 0; i < data.data.length; i += 4) {
-                if (data.data[i + 3] > 0) {
-                  const pixelIndex = i / 4;
-                  subStack.push({
-                    x: (pixelIndex % canvasWidth) / canvasWidth,
-                    y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
-                    o: Math.random(),
-                    t: Math.random()
-                  });
+float boxDist(vec2 p){
+  vec2 d = abs(p)-1.0;
+  return length(max(d,vec2(0))) + min(max(d.x,d.y),0.0);
+}
+
+float circleDist( vec2 p){
+  return length(p) - 1.0;
+}
+
+//https://www.shadertoy.com/view/3s3GDn
+float getGlow(float dist, float radius, float intensity){
+  return pow(radius/dist, intensity);
+}
+
+void main(){
+
+    vec2 uv = gl_FragCoord.xy/resolution.xy;
+  float widthHeightRatio = resolution.x/resolution.y;
+  vec2 centre;
+  vec2 pos;
+
+  float t = time * 0.05;
+
+  float dist;
+  float glow;
+  vec3 col = vec3(0);
+
+  //The spacing between shapes
+  float scale = 500.0;
+  //Number of shapes
+  const int layers = 15;
+
+  float depth;
+  vec2 bend;
+
+  vec3 purple = vec3(0.611, 0.129, 0.909);
+  vec3 green = vec3(0.133, 0.62, 0.698);
+
+  float angle;
+  float rotationAngle;
+  mat2 rotation;
+
+  //For movement of the anchor point in time
+  float d = 2.5*(sin(t) + sin(3.0*t));
+
+  //Create an out of frame anchor point where all shapes converge to
+  vec2 anchor = vec2(0.5 + cos(d), 0.5 + sin(d));
+
+  //Create light purple glow at the anchor loaction
+  pos = anchor - uv;
+  pos.y /= widthHeightRatio;
+  dist = length(pos);
+  glow = getGlow(dist, 0.25, 3.5);
+  col += glow * vec3(0.6,0.4,1.0);
+
+    for(int i = 0; i < layers; i++){
+
+    //Time varying depth information depending on layer
+    depth = fract(float(i)/float(layers) + t);
+
+    //Move the focus of the camera in a circle
+    centre = vec2(0.5 + 0.2 * sin(t), 0.5 + 0.2 * cos(t));
+
+    //Position shapes between the anchor and the camera focus based on depth
+    bend = mix(anchor, centre, depth);
+
+    pos = bend - uv;
+    pos.y /= widthHeightRatio;
+
+    //Rotate shapes
+    rotationAngle = 3.14 * sin(depth + fract(t) * 6.28) + float(i);
+    rotation = mat2(cos(rotationAngle), -sin(rotationAngle),
+            sin(rotationAngle),  cos(rotationAngle));
+
+    pos *= rotation;
+
+    //Position shapes according to depth
+    pos *= mix(scale, 0.0, depth);
+
+    float m = mod(float(i), 3.0);
+    if(m == 0.0){
+        dist = abs(boxDist(pos));
+    }else if(m == 1.0){
+      dist = abs(triangleDist(pos));
+    }else{
+        dist = abs(circleDist(pos));
+    }
+
+    //Get glow from base radius and intensity modified by depth
+    glow = getGlow(dist, radius+(1.0-depth)*2.0, intensity + depth);
+
+    //Find angle along shape and map from [-PI; PI] to [0; 1]
+    angle = (atan(pos.y, pos.x)+3.14)/6.28;
+    //Shift angle depending on layer and map to [1...0...1]
+        angle = abs((2.0*fract(angle + float(i)/float(layers))) - 1.0);
+
+    //White core
+        //col += 10.0*vec3(smoothstep(0.03, 0.02, dist));
+
+    //Glow according to angle value
+    col += glow * mix(green, purple, angle);
+    }
+
+  //Tone mapping
+  col = 1.0 - exp(-col);
+
+  //Gamma
+  col = pow(col, vec3(0.4545));
+
+  //Output to screen
+  gl_FragColor = vec4(col,1.0);
+}
+`;
+
+            //************** Utility functions **************
+
+            window.addEventListener('resize', onWindowResize, false);
+
+            function onWindowResize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                gl.viewport(0, 0, canvas.width, canvas.height);
+                gl.uniform1f(widthHandle, window.innerWidth);
+                gl.uniform1f(heightHandle, window.innerHeight);
+            }
+
+            //Compile shader and combine with source
+            function compileShader(shaderSource, shaderType) {
+                var shader = gl.createShader(shaderType);
+                gl.shaderSource(shader, shaderSource);
+                gl.compileShader(shader);
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    throw "Shader compile failed with: " + gl.getShaderInfoLog(shader);
                 }
-              }
-              mask.push({ hsl: textStack.hsl, s: subStack });
-              currentXMainName += textPartWidth;
-            });
-          }
-
-          if (sectionsTexts.length > 0) {
-            const sectionsString = sectionsTexts.map(t => t.text).join('');
-            let fSizeMainVal = 30;
-            if (mainNameTexts.length > 0 && engine.font.includes("px")) {
-              const fontMatch = engine.font.match(/(\d+)px/);
-              if (fontMatch && fontMatch[1]) {
-                fSizeMainVal = parseFloat(fontMatch[1]);
-              }
+                return shader;
             }
-            const baseSectionsFontSize = fSizeMainVal * 0.6;
-            engine.font = font(baseSectionsFontSize);
-            let mSections = engine.measureText(sectionsString);
-            let fSizeSections = Math.min(baseSectionsFontSize, (canvasWidth * 0.9 / mSections.width) * baseSectionsFontSize);
-            fSizeSections = Math.max(fSizeSections, 1);
-            engine.font = font(fSizeSections);
-            const fontWidthSections = engine.measureText(sectionsString).width;
-            const ySections = (canvasHeight * 0.75) + (fSizeSections / 3);
-            let currentXSections = (canvasWidth - fontWidthSections) / 2;
 
-            sectionsTexts.forEach(textStack => {
-              engine.clearRect(0, 0, canvasWidth, canvasHeight);
-              engine.font = font(fSizeSections);
-              engine.fillText(textStack.text, currentXSections, ySections);
-              const textPartWidth = engine.measureText(textStack.text).width;
-              const data = engine.getImageData(0, 0, canvasWidth, canvasHeight);
-              const subStack = [];
-              for (let i = 0; i < data.data.length; i += 4) {
-                if (data.data[i + 3] > 0) {
-                  const pixelIndex = i / 4;
-                  subStack.push({
-                    x: (pixelIndex % canvasWidth) / canvasWidth,
-                    y: Math.floor(pixelIndex / canvasWidth) / canvasHeight,
-                    o: Math.random(),
-                    t: Math.random()
-                  });
+            //From https://codepen.io/jlfwong/pen/GqmroZ
+            //Utility to complain loudly if we fail to find the attribute/uniform
+            function getAttribLocation(program, name) {
+                var attributeLocation = gl.getAttribLocation(program, name);
+                if (attributeLocation === -1) {
+                    throw 'Cannot find attribute ' + name + '.';
                 }
-              }
-              mask.push({ hsl: textStack.hsl, s: subStack });
-              currentXSections += textPartWidth;
-            });
-          }
-          return mask;
-        }
-
-        createNewParticle() {
-          for (let i = 0; i < newParticlesPerFrame; i++) {
-            let main = Math.random() * this.mask.length | 0;
-            let subMask = this.mask[main];
-            let maskElement = this.mask[main].s[Math.random() * this.mask[main].s.length | 0];
-
-            if (subMask && maskElement) {
-              let particle = {
-                x: maskElement.x,
-                y: maskElement.y,
-                hsl: subMask.hsl,
-                c: this.prepareParticle
-              };
-              this.particleMap.set(particle, particle);
+                return attributeLocation;
             }
-          }
-        }
 
-        secLog(log, timesPerFrame) {
-          if (Math.random() < 1 / 60 / timesPerFrame) {
-            console.log(log);
-          }
-        }
-
-        clear() {
-          this.engine.fillStyle = '#111';
-          this.engine.fillRect(0, 0, this.width, this.height);
-        }
-
-        randFromList(...rands) {
-          return rands.reduce((acc, rand) => {
-            return acc + rand;
-          }, 0) / rands.length;
-        }
-
-        prepareParticle(particle) {
-          const r1 = Math.random();
-          const r2 = Math.random();
-          const r3 = Math.random();
-          const rad = r3 * Math.PI * 2;
-
-          particle.x += (-0.5 + r1) / 300;
-          particle.y += (-0.5 + r2) / 300;
-          particle.si = 1 + Math.random() * 4 | 0;
-          particle.s = 0.003 + this.randFromList(r1, r2) / 10;
-          particle.l = 0;
-          particle.mx = Math.cos(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
-          particle.my = Math.sin(rad) * (particle.s / (r1 < 0.05 ? 10 : 400));
-          particle.c = this.drawParticle;
-        }
-
-        drawParticle(particle) {
-          if (particle.l >= 1) {
-            particle.c = null;
-            return;
-          }
-
-          particle.l += particle.s;
-          particle.x += particle.mx;
-          particle.y += particle.my;
-
-          this.engine.fillStyle = color(particle.hsl, this.opa * Math.sin(particle.l * Math.PI));
-          this.engine.fillRect(particle.x * this.width, particle.y * this.height, particle.si, particle.si);
-        }
-
-        renderParticles() {
-          this.particleMap.forEach((particle) => {
-            particle.c.call(this, particle);
-            if (!particle.c) {
-              this.particleMap.delete(particle);
+            function getUniformLocation(program, name) {
+                var attributeLocation = gl.getUniformLocation(program, name);
+                if (attributeLocation === -1) {
+                    throw 'Cannot find uniform ' + name + '.';
+                }
+                return attributeLocation;
             }
-          });
-        }
 
-        drawStatic() {
-          let i = 0;
-          const step = 0.01;
+            //************** Create shaders **************
 
-          this.mask.forEach(subMask => {
-            subMask.s.forEach(pos => {
-              i++;
-              this.engine.fillStyle = color(subMask.hsl, (1 + Math.cos(pos.x * 5 * pos.y * 5 + this.tick / 10)) / 2 * this.opa * pos.t * 0.5);
-              this.engine.fillRect(
-                pos.x * this.width,
-                pos.y * this.height,
-                this.width / 150,
-                this.width / 150
-              );
+            //Create vertex and fragment shaders
+            var vertexShader = compileShader(vertexSource, gl.VERTEX_SHADER);
+            var fragmentShader = compileShader(fragmentSource, gl.FRAGMENT_SHADER);
 
-              if (i % 2) {
-                return;
-              }
+            //Create shader programs
+            var program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
 
-              pos.o += step;
-              const opa = Math.max(0, Math.sin(pos.o * Math.PI * 2));
-              const padding = opa * this.width / 200;
+            gl.useProgram(program);
 
-              this.engine.fillStyle = color(subMask.hsl, this.opa * opa * 0.2);
+            //Set up rectangle covering entire canvas
+            var vertexData = new Float32Array([
+                -1.0, 1.0,    // top left
+                -1.0, -1.0,   // bottom left
+                 1.0, 1.0,    // top right
+                 1.0, -1.0    // bottom right
+            ]);
 
-              if (pos.t < 0.5) {
-                this.engine.beginPath();
-                this.engine.arc(
-                  pos.x * this.width,
-                  pos.y * this.height,
-                  this.width / 500 + padding,
-                  0,
-                  Math.PI * 2
-                );
-                this.engine.fill();
-              } else {
-                this.engine.fillRect(
-                  pos.x * this.width - padding,
-                  pos.y * this.height - padding,
-                  this.width / 150 + padding * 2,
-                  this.width / 150 + padding * 2
-                );
-              }
-            });
-          });
-        }
+            //Create vertex buffer
+            var vertexDataBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexDataBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
 
-        draw() {
-          this.tick++;
-          this.nextMaskCb();
-          this.createNewParticle();
-          this.clear();
-          this.engine.globalCompositeOperation = 'lighter';
-          this.drawStatic();
-          this.renderParticles();
-          this.engine.globalCompositeOperation = 'source-over';
-          requestAnimationFrame(this.drawCB);
-        }
+            // Layout of our data in the vertex buffer
+            var positionHandle = getAttribLocation(program, 'position');
 
-        fadeInMask() {
-          this.opa += this.stack[this.stackId].fadeIn;
-          if (this.opa >= 1) {
-            this.opa = 1;
-            this.afterFadeIn();
-          }
-        }
+            gl.enableVertexAttribArray(positionHandle);
+            gl.vertexAttribPointer(positionHandle,
+                2,        // position is a vec2 (2 values per component)
+                gl.FLOAT, // each component is a float
+                false,    // don't normalize values
+                2 * 4,    // two 4 byte float components per vertex (32 bit float is 4 bytes)
+                0         // how many bytes inside the buffer to start from
+            );
 
-        afterFadeIn() {
-          this.opa = 1;
-          if (this.stack[this.stackId].ticks) {
-            this.maskTick = 0;
-            this.nextMaskCb = this.tickMask.bind(this);
-          } else {
-            this.nextMaskCb = () => {};
-          }
-        }
+            //Set uniform handle
+            var timeHandle = getUniformLocation(program, 'time');
+            var widthHandle = getUniformLocation(program, 'width');
+            var heightHandle = getUniformLocation(program, 'height');
 
-        fadeOutMask() {
-          this.opa -= this.stack[this.stackId].fadeOut;
-          if (this.opa <= 0) {
-            this.afterFadeOut();
-          }
-        }
+            gl.uniform1f(widthHandle, window.innerWidth);
+            gl.uniform1f(heightHandle, window.innerHeight);
 
-        afterFadeOut() {
-          this.opa = 0;
-          this.nextMaskCb = this.nextMask.bind(this);
-        }
+            var lastFrame = Date.now();
+            var thisFrame;
 
-        tickMask() {
-          this.maskTick++;
-          if (this.maskTick >= this.stack[this.stackId].ticks) {
-            if (this.stack[this.stackId].fadeOut) {
-              this.nextMaskCb = this.fadeOutMask.bind(this);
-            } else {
-              this.afterFadeOut();
+            function draw() {
+                //Update time
+                thisFrame = Date.now();
+                time += (thisFrame - lastFrame) / 1000;
+                lastFrame = thisFrame;
+
+                //Send uniforms to program
+                gl.uniform1f(timeHandle, time);
+                //Draw a triangle strip connecting vertices 0-4
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                requestAnimationFrame(draw);
             }
-          }
-        }
 
-        nextMask() {
-          this.stackId++;
-          if (this.stackId >= this.stack.length) {
-            this.stackId = 0;
-          }
-          this.mask = this.maskCache[this.stackId];
-          if (this.stack[this.stackId].fadeIn) {
-            this.nextMaskCb = this.fadeInMask.bind(this);
-          } else {
-            this.opa = 1;
-            this.afterFadeIn();
-          }
-        }
-
-        run() {
-          this.drawCB = this.draw.bind(this);
-          this.drawCB();
-        }
-      }
-
-      const a = new TextSparks();
-      a.run();
+            draw();
+        } // end if (gl)
     </script>
-  </body>
+</body>
 </html>
