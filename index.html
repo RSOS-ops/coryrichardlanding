@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebGL Animation</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
     <style>
         body {
             background-color: #000;
@@ -32,6 +33,60 @@
         }
 
         if (gl) { // Only run WebGL code if context was successfully obtained
+            
+            var letterTextures = {};
+            // Helper function to create a texture from text
+            function createTextTexture(gl, text, font, textColor, backgroundColor) {
+                // Create a 2D canvas
+                const canvas2d = document.createElement('canvas');
+                const ctx = canvas2d.getContext('2d');
+
+                // Set font and measure text
+                ctx.font = font;
+                const textMetrics = ctx.measureText(text);
+                
+                // Estimate canvas size
+                let canvasWidth = Math.pow(2, Math.ceil(Math.log2(textMetrics.width + 20))); // Add some padding
+                let actualBoundingBoxAscent = textMetrics.actualBoundingBoxAscent || (parseInt(font, 10) * 0.85); // Fallback for ascent
+                let actualBoundingBoxDescent = textMetrics.actualBoundingBoxDescent || (parseInt(font, 10) * 0.35); // Fallback for descent
+                let canvasHeight = Math.pow(2, Math.ceil(Math.log2(actualBoundingBoxAscent + actualBoundingBoxDescent + 20))); // Add some padding
+
+                canvas2d.width = canvasWidth;
+                canvas2d.height = canvasHeight;
+
+                // Re-set font and properties as canvas size change might reset them
+                ctx.font = font; 
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                // Fill background
+                ctx.fillStyle = backgroundColor;
+                ctx.fillRect(0, 0, canvas2d.width, canvas2d.height);
+
+                // Draw text
+                ctx.fillStyle = textColor;
+                ctx.fillText(text, canvas2d.width / 2, canvas2d.height / 2);
+
+                // Create WebGL texture
+                const texture = gl.createTexture();
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+                
+                // Upload the canvas to the texture
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas2d);
+                
+                // Set texture parameters
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                
+                gl.generateMipmap(gl.TEXTURE_2D); // Generate mipmaps
+
+                gl.bindTexture(gl.TEXTURE_2D, null); // Unbind texture
+
+                return texture;
+            }
+
             //Time
             var time = 0.0;
 
@@ -39,8 +94,11 @@
 
             var vertexSource = `
 attribute vec2 position;
+attribute vec2 texCoord; // New: For texture coordinates
+varying vec2 vTexCoord;  // New: To pass texCoord to fragment shader
 void main() {
     gl_Position = vec4(position, 0.0, 1.0);
+    vTexCoord = texCoord; // Pass through texture coordinates
 }
 `;
 
@@ -49,136 +107,46 @@ precision highp float;
 
 uniform float width;
 uniform float height;
-vec2 resolution = vec2(width, height);
+vec2 resolution = vec2(width, height); // Resolution of the canvas
 
 uniform float time;
+uniform sampler2D u_letterTexture; // Texture for the current letter
 
-//Base values modified with depth later
-float intensity = 1.0;
-float radius = 0.05;
+varying vec2 vTexCoord; // Texture coordinates from vertex shader
 
-//Distance functions from
-//https://www.iquilezles.org/www/articles/distfunctions2d/distfunctions2d.htm
-float triangleDist(vec2 p){
-    const float k = sqrt(3.0);
-  p.x = abs(p.x) - 1.0;
-  p.y = p.y + 1.0/k;
-  if( p.x+k*p.y>0.0 ) p=vec2(p.x-k*p.y,-k*p.x-p.y)/2.0;
-  p.x -= clamp( p.x, -2.0, 0.0 );
-  return -length(p)*sign(p.y);
-}
+// Re-using existing color and effect parameters/functions
+vec3 purple = vec3(0.611, 0.129, 0.909);
+vec3 green = vec3(0.133, 0.62, 0.698);
 
-float boxDist(vec2 p){
-  vec2 d = abs(p)-1.0;
-  return length(max(d,vec2(0))) + min(max(d.x,d.y),0.0);
-}
-
-float circleDist( vec2 p){
-  return length(p) - 1.0;
-}
-
-//https://www.shadertoy.com/view/3s3GDn
-float getGlow(float dist, float radius, float intensity){
+// Glow function (can be reused, but 'dist' will now come from texture alpha)
+float getGlow(float alphaMask, float radius, float intensity){
+  float dist = 1.0 - alphaMask; // Crude distance
   return pow(radius/dist, intensity);
 }
 
 void main(){
+  vec4 texColor = texture2D(u_letterTexture, vTexCoord);
 
-    vec2 uv = gl_FragCoord.xy/resolution.xy;
-  float widthHeightRatio = resolution.x/resolution.y;
-  vec2 centre;
-  vec2 pos;
+  if(texColor.a < 0.1) { // Threshold to avoid faint edges if any
+    discard;
+  }
+  
+  float t = time * 0.05; // Keep overall time progression
 
-  float t = time * 0.05;
+  float mixFactor = fract(t + vTexCoord.x * 0.5); // Vary color across letter and time
+  vec3 letterColor = mix(green, purple, mixFactor);
 
-  float dist;
-  float glow;
-  vec3 col = vec3(0);
+  float glowStrength = getGlow(texColor.a, 0.5, 1.5); // Adjusted radius/intensity
+  
+  vec3 finalColor = letterColor + glowStrength * letterColor; // Additive glow
 
-  //The spacing between shapes
-  float scale = 500.0;
-  //Number of shapes
-  const int layers = 15;
+  // Tone mapping (optional, can keep)
+  finalColor = 1.0 - exp(-finalColor);
 
-  float depth;
-  vec2 bend;
+  // Gamma correction (optional, can keep)
+  finalColor = pow(finalColor, vec3(0.4545));
 
-  vec3 purple = vec3(0.611, 0.129, 0.909);
-  vec3 green = vec3(0.133, 0.62, 0.698);
-
-  float angle;
-  float rotationAngle;
-  mat2 rotation;
-
-  //For movement of the anchor point in time
-  float d = 2.5*(sin(t) + sin(3.0*t));
-
-  //Create an out of frame anchor point where all shapes converge to
-  vec2 anchor = vec2(0.5 + cos(d), 0.5 + sin(d));
-
-  //Create light purple glow at the anchor loaction
-  pos = anchor - uv;
-  pos.y /= widthHeightRatio;
-  dist = length(pos);
-  glow = getGlow(dist, 0.25, 3.5);
-  col += glow * vec3(0.6,0.4,1.0);
-
-    for(int i = 0; i < layers; i++){
-
-    //Time varying depth information depending on layer
-    depth = fract(float(i)/float(layers) + t);
-
-    //Move the focus of the camera in a circle
-    centre = vec2(0.5 + 0.2 * sin(t), 0.5 + 0.2 * cos(t));
-
-    //Position shapes between the anchor and the camera focus based on depth
-    bend = mix(anchor, centre, depth);
-
-    pos = bend - uv;
-    pos.y /= widthHeightRatio;
-
-    //Rotate shapes
-    rotationAngle = 3.14 * sin(depth + fract(t) * 6.28) + float(i);
-    rotation = mat2(cos(rotationAngle), -sin(rotationAngle),
-            sin(rotationAngle),  cos(rotationAngle));
-
-    pos *= rotation;
-
-    //Position shapes according to depth
-    pos *= mix(scale, 0.0, depth);
-
-    float m = mod(float(i), 3.0);
-    if(m == 0.0){
-        dist = abs(boxDist(pos));
-    }else if(m == 1.0){
-      dist = abs(triangleDist(pos));
-    }else{
-        dist = abs(circleDist(pos));
-    }
-
-    //Get glow from base radius and intensity modified by depth
-    glow = getGlow(dist, radius+(1.0-depth)*2.0, intensity + depth);
-
-    //Find angle along shape and map from [-PI; PI] to [0; 1]
-    angle = (atan(pos.y, pos.x)+3.14)/6.28;
-    //Shift angle depending on layer and map to [1...0...1]
-        angle = abs((2.0*fract(angle + float(i)/float(layers))) - 1.0);
-
-    //White core
-        //col += 10.0*vec3(smoothstep(0.03, 0.02, dist));
-
-    //Glow according to angle value
-    col += glow * mix(green, purple, angle);
-    }
-
-  //Tone mapping
-  col = 1.0 - exp(-col);
-
-  //Gamma
-  col = pow(col, vec3(0.4545));
-
-  //Output to screen
-  gl_FragColor = vec4(col,1.0);
+  gl_FragColor = vec4(finalColor, texColor.a); // Output final color, preserve letter alpha
 }
 `;
 
@@ -237,57 +205,144 @@ void main(){
 
             gl.useProgram(program);
 
-            //Set up rectangle covering entire canvas
-            var vertexData = new Float32Array([
-                -1.0, 1.0,    // top left
-                -1.0, -1.0,   // bottom left
-                 1.0, 1.0,    // top right
-                 1.0, -1.0    // bottom right
-            ]);
+            // ---- BEGIN NEW CODE BLOCK FOR LETTERS ----
+            const letters = "CORYRICHARD";
+            const letterFontSize = 'bold 128px Roboto'; // Font size for textures
+            const letterTextColor = 'white';
+            const letterBackgroundColor = 'rgba(0, 0, 0, 0)'; // Transparent background
 
-            //Create vertex buffer
-            var vertexDataBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, vertexDataBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+            // Create textures for each letter
+            for (let i = 0; i < letters.length; i++) {
+                const char = letters[i];
+                if (!letterTextures[char]) { // Avoid re-creating if script is run multiple times in some environments
+                    letterTextures[char] = createTextTexture(gl, char, letterFontSize, letterTextColor, letterBackgroundColor);
+                }
+            }
 
-            // Layout of our data in the vertex buffer
-            var positionHandle = getAttribLocation(program, 'position');
+            // Get handles for new shader variables
+            var texCoordHandle = getAttribLocation(program, 'texCoord');
+            var letterTextureUniformLocation = getUniformLocation(program, 'u_letterTexture');
+            // ---- END NEW CODE BLOCK FOR LETTERS ----
+            // var positionHandle = getAttribLocation(program, 'position'); // This should already be defined from before
+
+            // ---- BEGIN VBO AND DRAW LOGIC FOR LETTERS ----
+
+            const letterSpacing = 0.15; // normalized screen space for spacing between letters
+            const letterSize = 0.1;   // normalized screen space for letter size (height)
+            const totalLetters = letters.length;
+            const totalWidth = (totalLetters -1) * letterSpacing;
+            let startX = -totalWidth / 2;
+
+            let allVertexData = [];
+
+            for (let i = 0; i < totalLetters; i++) {
+                const char = letters[i];
+                // For simplicity, assume square textures for now. Adjust aspect ratio if needed.
+                // Quad vertices (x, y) - two triangles
+                // Triangle 1: top-left, bottom-left, top-right
+                // Triangle 2: top-right, bottom-left, bottom-right
+                
+                // Letter quad centered at (currentX, 0) for now, adjust Y as needed
+                let currentX = startX + i * letterSpacing;
+
+                // Positions (centered around currentX, 0 for now, Y can be adjusted)
+                // Adjust Y if you want the text baseline somewhere else. For now, centered vertically.
+                let x1 = currentX - letterSize / 2;
+                let x2 = currentX + letterSize / 2;
+                let y1 = -letterSize / 2; // Top of letter quad
+                let y2 = letterSize / 2;  // Bottom of letter quad
+
+                // UVs (assuming standard texture coordinates)
+                const u1 = 0.0;
+                const v1 = 0.0; // Top-left of texture
+                const u2 = 1.0;
+                const v2 = 1.0; // Bottom-right of texture
+
+                allVertexData.push(
+                    // Triangle 1
+                    x1, y1, u1, v1, // Top-left
+                    x1, y2, u1, v2, // Bottom-left
+                    x2, y1, u2, v1, // Top-right
+                    // Triangle 2
+                    x2, y1, u2, v1, // Top-right
+                    x1, y2, u1, v2, // Bottom-left
+                    x2, y2, u2, v2  // Bottom-right
+                );
+            }
+
+            const letterVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, letterVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(allVertexData), gl.STATIC_DRAW);
+
+            // Configure vertex attributes
+            const STRIDE = 4 * Float32Array.BYTES_PER_ELEMENT; // x, y, u, v (4 floats)
 
             gl.enableVertexAttribArray(positionHandle);
-            gl.vertexAttribPointer(positionHandle,
-                2,        // position is a vec2 (2 values per component)
-                gl.FLOAT, // each component is a float
-                false,    // don't normalize values
-                2 * 4,    // two 4 byte float components per vertex (32 bit float is 4 bytes)
-                0         // how many bytes inside the buffer to start from
-            );
+            gl.vertexAttribPointer(positionHandle, 2, gl.FLOAT, false, STRIDE, 0); // First 2 floats are position
 
-            //Set uniform handle
-            var timeHandle = getUniformLocation(program, 'time');
-            var widthHandle = getUniformLocation(program, 'width');
-            var heightHandle = getUniformLocation(program, 'height');
+            gl.enableVertexAttribArray(texCoordHandle);
+            gl.vertexAttribPointer(texCoordHandle, 2, gl.FLOAT, false, STRIDE, 2 * Float32Array.BYTES_PER_ELEMENT); // Next 2 floats are texCoords
 
-            gl.uniform1f(widthHandle, window.innerWidth);
-            gl.uniform1f(heightHandle, window.innerHeight);
+            //Set uniform handle (these should already be defined and initialized)
+            var timeHandle = getUniformLocation(program, 'time'); // Ensure timeHandle is defined
+            var widthHandle = getUniformLocation(program, 'width'); // Ensure widthHandle is defined
+            var heightHandle = getUniformLocation(program, 'height'); // Ensure heightHandle is defined
+            gl.uniform1f(widthHandle, window.innerWidth); // Set initial width
+            gl.uniform1f(heightHandle, window.innerHeight); // Set initial height
+
 
             var lastFrame = Date.now();
             var thisFrame;
 
             function draw() {
-                //Update time
                 thisFrame = Date.now();
-                time += (thisFrame - lastFrame) / 1000;
+                time += (thisFrame - lastFrame) / 1000.0; // Ensure float division
                 lastFrame = thisFrame;
 
-                //Send uniforms to program
+                gl.clearColor(0.0, 0.0, 0.0, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                gl.useProgram(program); // Ensure program is used
+
+                // Update global uniforms
                 gl.uniform1f(timeHandle, time);
-                //Draw a triangle strip connecting vertices 0-4
-                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                // width and height uniforms are set once unless window resizes, 
+                // onWindowResize handles their update.
+
+                gl.enable(gl.BLEND);
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); // Standard alpha blending
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, letterVBO); // Bind the letter VBO
+
+                // Re-setup attribute pointers (important if VBO or program changes, good practice in draw)
+                // If VBO/program doesn't change per frame, these can be set once after VBO creation.
+                // For simplicity here, setting them before the loop.
+                gl.vertexAttribPointer(positionHandle, 2, gl.FLOAT, false, STRIDE, 0);
+                gl.vertexAttribPointer(texCoordHandle, 2, gl.FLOAT, false, STRIDE, 2 * Float32Array.BYTES_PER_ELEMENT);
+                gl.enableVertexAttribArray(positionHandle); // Ensure enabled
+                gl.enableVertexAttribArray(texCoordHandle);   // Ensure enabled
+
+
+                for (let i = 0; i < letters.length; i++) {
+                    const char = letters[i];
+                    const texture = letterTextures[char];
+
+                    if (texture) {
+                        gl.activeTexture(gl.TEXTURE0);
+                        gl.bindTexture(gl.TEXTURE_2D, texture);
+                        gl.uniform1i(letterTextureUniformLocation, 0); // Tell sampler to use texture unit 0
+
+                        // Draw the 6 vertices for the current letter's quad
+                        gl.drawArrays(gl.TRIANGLES, i * 6, 6);
+                    }
+                }
 
                 requestAnimationFrame(draw);
             }
 
-            draw();
+            // ---- END VBO AND DRAW LOGIC FOR LETTERS ----
+
+            draw(); // Call draw to start the loop
         } // end if (gl)
     </script>
 </body>
