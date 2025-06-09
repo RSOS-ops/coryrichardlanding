@@ -3,6 +3,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+// Add title text to the page
+const titleElement = document.createElement('div');
+titleElement.id = 'title';
+titleElement.textContent = 'Cory        Richard';
+document.body.appendChild(titleElement);
+
 // Scene Setup
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
@@ -72,7 +78,7 @@ lockCameraAndControls();
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 20);
 directionalLight.position.set(5, 5, 5);
 scene.add(directionalLight);
 
@@ -82,8 +88,8 @@ scene.add(directionalLightTarget);
 directionalLight.target = directionalLightTarget;
 
 // Optional: Add a helper to visualize the DirectionalLight.
-const directionalLightHelper = new THREE.DirectionalLightHelper(directionalLight, 0); // Using a size of 2 for the helper
-scene.add(directionalLightHelper);
+// const directionalLightHelper = new THREE.DirectionalLightHelper(directionalLight, 0); // Using a size of 2 for the helper
+// scene.add(directionalLightHelper);
 
 const spotLightDown = new THREE.SpotLight(0xffffff, 50);
 spotLightDown.distance = 1; // Adjusted for potentially different model size
@@ -172,7 +178,7 @@ function adjustCameraForModel() {
 }
 
 const gltfLoader = new GLTFLoader();
-const modelUrl = 'HoodedCory_NewStart_NewHood_DecimatedCreasedHood-1.glb';
+const modelUrl = 'HoodedCory_PlanarFace_BigWireframe.glb';
 
 // Laser Line Setup
 const laserMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 }); // Red laser
@@ -212,6 +218,18 @@ gltfLoader.load(
     (gltf) => {
         model = gltf.scene;
 
+        // Call adjustCameraForModel BEFORE scaling to set camera position based on original size
+        adjustCameraForModel();
+
+        // Scale the model to 175% of its current size AFTER camera positioning
+        model.scale.setScalar(1.55);
+
+        // Move the model to position (-0.5, 0, 0)
+        model.position.set(-0.25, 0, 0);
+
+        // Rotate the model to -155 degrees on the Y axis
+        model.rotation.y = THREE.MathUtils.degToRad(-155);
+
         // Configure and attach the SpotLight to the model
         const spotLightDownTargetObject = new THREE.Object3D();
         model.add(spotLightDownTargetObject);
@@ -219,28 +237,30 @@ gltfLoader.load(
 
         spotLightDown.target = spotLightDownTargetObject;
         model.add(spotLightDown);
-
-        // Optional: Add a helper to visualize the original SpotLight.
-        const spotLightDownHelper = new THREE.SpotLightHelper(spotLightDown);
-        scene.add(spotLightDownHelper);
+        
+        // Scale spotlight distance for the larger model
+        spotLightDown.distance = 1.75; // 1 * 1.75 = 1.75
+        spotLightDown.angle = Math.PI / 8; // Keep angle the same
+        spotLightDown.penumbra = 0.5;
+        spotLightDown.decay = 2;
 
         // Configure and attach the New SpotLight to the model
         const spotLightFaceTargetObject = new THREE.Object3D();
         model.add(spotLightFaceTargetObject); // Add target as a child of the model.
-        spotLightFaceTargetObject.position.set(0, 0.4, 0.0); // Target position relative to the model.
+        spotLightFaceTargetObject.position.set(0, 0.7, 0.0); // 0.4 * 1.75 = 0.7
 
         spotLightFace.target = spotLightFaceTargetObject; // Aim the new spotlight at this target.
         model.add(spotLightFace); // Add the new spotlight itself as a child of the model.
         // Position the new spotlight relative to the model's local coordinates.
-        spotLightFace.position.set(0, -0.6, 0.5);
-
-        // Optional: Add a helper to visualize the New SpotLight.
-        const spotLightFaceHelper = new THREE.SpotLightHelper(spotLightFace);
-        scene.add(spotLightFaceHelper);
+        spotLightFace.position.set(0, -1.05, 0.875); // -0.6 * 1.75 = -1.05, 0.5 * 1.75 = 0.875
+        
+        // Scale spotlight distance for the larger model
+        spotLightFace.distance = 1.4875; // 0.85 * 1.75 = 1.4875
+        spotLightFace.angle = Math.PI / 11.5; // Keep angle the same
+        spotLightFace.penumbra = 0.5;
+        spotLightFace.decay = 0.5;
 
         interactiveObjects.push(model); // Add model for laser interaction
-
-        adjustCameraForModel(); // Call this after model is processed
     },
     (xhr) => {
         console.log((xhr.loaded / xhr.total * 100) + '% loaded');

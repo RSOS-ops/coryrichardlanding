@@ -1,3 +1,6 @@
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+
 body {
     margin: 0;
     overflow: hidden;
@@ -5,4 +8,21 @@ body {
 
 canvas {
     display: block;
+}
+
+#title {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    font-size: 7em;
+    font-family: 'Bebas Neue', sans-serif;
+    font-weight: 400;
+    z-index: 100;
+    pointer-events: none;
+    text-align: center;
+    margin: 0;
+    letter-spacing: .2em;
+    white-space: pre;
 }
