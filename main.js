@@ -27,6 +27,47 @@ controls.target.set(0, 0, 0);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 
+// Camera and Controls Lock State
+let isLocked = false;
+
+// Function to lock camera and controls
+function lockCameraAndControls() {
+    if (controls) {
+        controls.enabled = false;
+        controls.enableRotate = false;
+        controls.enableZoom = false;
+        controls.enablePan = false;
+        controls.enableDamping = false;
+    }
+    isLocked = true;
+    console.log('Camera and controls locked');
+}
+
+// Function to unlock camera and controls
+function unlockCameraAndControls() {
+    if (controls) {
+        controls.enabled = true;
+        controls.enableRotate = true;
+        controls.enableZoom = true;
+        controls.enablePan = true;
+        controls.enableDamping = true;
+    }
+    isLocked = false;
+    console.log('Camera and controls unlocked');
+}
+
+// Function to toggle lock state
+function toggleCameraLock() {
+    if (isLocked) {
+        unlockCameraAndControls();
+    } else {
+        lockCameraAndControls();
+    }
+}
+
+// Lock the camera and controls immediately
+lockCameraAndControls();
+
 // Lighting Setup
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
@@ -257,7 +298,7 @@ function animate() {
     const deltaTime = clock.getDelta(); // Get time elapsed since last frame
     requestAnimationFrame(animate);
 
-    if (controls.enableDamping) {
+    if (!isLocked && controls.enableDamping) {
         controls.update();
     }
 
