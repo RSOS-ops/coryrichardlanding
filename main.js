@@ -371,3 +371,6 @@ window.addEventListener('resize', () => {
         camera.updateProjectionMatrix();
     }
 });
+
+// Remove this line to keep controls locked
+// unlockCameraAndControls();
