@@ -1,3 +1,4 @@
+import { TextSparks } from './textSparks.js';
 // Import necessary Three.js modules
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -563,4 +564,10 @@ window.addEventListener('resize', () => {
     } else {
         camera.updateProjectionMatrix();
     }
+});
+
+// Initialize and run the text sparks animation
+document.addEventListener('DOMContentLoaded', () => {
+    const textSparksInstance = new TextSparks();
+    textSparksInstance.run();
 });

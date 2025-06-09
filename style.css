@@ -6,3 +6,17 @@ body {
 canvas {
     display: block;
 }
+
+#text-spark-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  /* height: auto; /* Or a specific height if needed, e.g., 100px */
+  z-index: 1; /* Ensure it's on top of the main three.js canvas */
+  pointer-events: none; /* Allow interaction with the canvas below */
+}
+
+#text-spark-data {
+  display: none; /* Already set inline, but good to have here */
+}
