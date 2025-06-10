@@ -4,7 +4,7 @@ const color = (hsl, o) => {
     return `hsla(${hsl.h | 0}, ${hsl.s}%, ${hsl.l}%, ${o})`;
 };
 
-class TextSparks
+export class TextSparks
 {
     constructor() {
 
@@ -78,7 +78,7 @@ class TextSparks
         if (!this.canvas) return;
         this.width  = window.innerWidth;
         // Set a fixed height for the text canvas, or make it configurable
-        this.height = 150; // Example: 150px height for the top bar text
+        this.height = 225; // Example: 150px height for the top bar text
 
         this.canvas.setAttribute('width', this.width);
         this.canvas.setAttribute('height', this.height);
@@ -108,7 +108,7 @@ class TextSparks
         const maskCanvasWidth        = Math.min(this.width, 800); // Max width for mask generation canvas
         const maskCanvasHeight       = this.height; // Use the actual canvas height for proportion
 
-        const baseFontSize = Math.min(maskCanvasHeight * 0.6, 60); // Adjust base font size based on canvas height, max 60px
+        const baseFontSize = Math.min(maskCanvasHeight * 0.6, 90); // Adjust base font size based on canvas height, max 60px
 
         const tempCanvas = document.createElement('canvas');
         const tempEngine = tempCanvas.getContext('2d');
